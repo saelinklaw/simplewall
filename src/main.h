@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include "routine.hpp"
+#include "routine.h"
 
-#include "resource.hpp"
-#include "app.hpp"
-#include "global.hpp"
+#include "resource.h"
+#include "app.h"
+#include "global.h"
 
 // libs
 #pragma comment(lib, "msimg32.lib")
@@ -23,16 +23,22 @@
 #pragma comment(lib, "windowscodecs.lib")
 
 // guids
-EXTERN_C static const GUID GUID_WfpProvider = {0xb0d553e2, 0xc6a0, 0x4a9a, {0xae, 0xb8, 0xc7, 0x52, 0x48, 0x3e, 0xd6, 0x2f}};
-EXTERN_C static const GUID GUID_WfpSublayer = {0x9fee6f59, 0xb951, 0x4f9a, {0xb5, 0x2f, 0x13, 0x3d, 0xcf, 0x7a, 0x42, 0x79}};
+DEFINE_GUID (GUID_WfpProvider, 0xb0d553e2, 0xc6a0, 0x4a9a, 0xae, 0xb8, 0xc7, 0x52, 0x48, 0x3e, 0xd6, 0x2f);
+DEFINE_GUID (GUID_WfpSublayer, 0x9fee6f59, 0xb951, 0x4f9a, 0xb5, 0x2f, 0x13, 0x3d, 0xcf, 0x7a, 0x42, 0x79);
 
 // deprecated and not used, but need for compatibility
-EXTERN_C static GUID GUID_WfpOutboundCallout4_DEPRECATED = {0xf1251f1a, 0xab09, 0x4ce7, {0xba, 0xe3, 0x6c, 0xcc, 0xce, 0xf2, 0xc8, 0xca}};
-EXTERN_C static GUID GUID_WfpOutboundCallout6_DEPRECATED = {0xfd497f2e, 0x46f5, 0x486d, {0xb0, 0xc, 0x3f, 0x7f, 0xe0, 0x7a, 0x94, 0xa6}};
-EXTERN_C static GUID GUID_WfpInboundCallout4_DEPRECATED = {0xefc879ce, 0x3066, 0x45bb, {0x8a, 0x70, 0x17, 0xfe, 0x29, 0x78, 0x53, 0xc0}};
-EXTERN_C static GUID GUID_WfpInboundCallout6_DEPRECATED = {0xd0420299, 0x52d8, 0x4f18, {0xbc, 0x80, 0x47, 0x3a, 0x24, 0x93, 0xf2, 0x69}};
-EXTERN_C static GUID GUID_WfpListenCallout4_DEPRECATED = {0x51fa679d, 0x578b, 0x4835, {0xa6, 0x3e, 0xca, 0xd7, 0x68, 0x7f, 0x74, 0x95}};
-EXTERN_C static GUID GUID_WfpListenCallout6_DEPRECATED = {0xa02187ca, 0xe655, 0x4adb, {0xa1, 0xf2, 0x47, 0xa2, 0xc9, 0x78, 0xf9, 0xce}};
+DEFINE_GUID (GUID_WfpOutboundCallout4_DEPRECATED, 0xf1251f1a, 0xab09, 0x4ce7, 0xba, 0xe3, 0x6c, 0xcc, 0xce, 0xf2, 0xc8, 0xca);
+DEFINE_GUID (GUID_WfpOutboundCallout6_DEPRECATED, 0xfd497f2e, 0x46f5, 0x486d, 0xb0, 0xc, 0x3f, 0x7f, 0xe0, 0x7a, 0x94, 0xa6);
+DEFINE_GUID (GUID_WfpInboundCallout4_DEPRECATED, 0xefc879ce, 0x3066, 0x45bb, 0x8a, 0x70, 0x17, 0xfe, 0x29, 0x78, 0x53, 0xc0);
+DEFINE_GUID (GUID_WfpInboundCallout6_DEPRECATED, 0xd0420299, 0x52d8, 0x4f18, 0xbc, 0x80, 0x47, 0x3a, 0x24, 0x93, 0xf2, 0x69);
+DEFINE_GUID (GUID_WfpListenCallout4_DEPRECATED, 0x51fa679d, 0x578b, 0x4835, 0xa6, 0x3e, 0xca, 0xd7, 0x68, 0x7f, 0x74, 0x95);
+DEFINE_GUID (GUID_WfpListenCallout6_DEPRECATED, 0xa02187ca, 0xe655, 0x4adb, 0xa1, 0xf2, 0x47, 0xa2, 0xc9, 0x78, 0xf9, 0xce);
+
+typedef ULONG (WINAPI *FWPMNES4)(HANDLE engineHandle, const FWPM_NET_EVENT_SUBSCRIPTION0* subscription, FWPM_NET_EVENT_CALLBACK4 callback, PVOID context, HANDLE* eventsHandle); // win10rs5+
+typedef ULONG (WINAPI *FWPMNES3)(HANDLE engineHandle, const FWPM_NET_EVENT_SUBSCRIPTION0* subscription, FWPM_NET_EVENT_CALLBACK3 callback, PVOID context, HANDLE* eventsHandle); // win10rs4+
+typedef ULONG (WINAPI *FWPMNES2)(HANDLE engineHandle, const FWPM_NET_EVENT_SUBSCRIPTION0* subscription, FWPM_NET_EVENT_CALLBACK2 callback, PVOID context, HANDLE* eventsHandle); // win10rs1+
+typedef ULONG (WINAPI *FWPMNES1)(HANDLE engineHandle, const FWPM_NET_EVENT_SUBSCRIPTION0* subscription, FWPM_NET_EVENT_CALLBACK1 callback, PVOID context, HANDLE* eventsHandle); // win8+
+typedef ULONG (WINAPI *FWPMNES0)(HANDLE engineHandle, const FWPM_NET_EVENT_SUBSCRIPTION0* subscription, FWPM_NET_EVENT_CALLBACK0 callback, PVOID context, HANDLE* eventsHandle); // win7+
 
 // enums
 typedef enum _ENUM_TYPE_DATA
@@ -46,19 +52,17 @@ typedef enum _ENUM_TYPE_DATA
 	DataAppUWP, // win8+
 	DataRuleBlocklist,
 	DataRuleSystem,
-	DataRuleCustom,
+	DataRuleUser,
 	DataRulesConfig,
 	DataTypePort,
 	DataTypeIp,
 	DataTypeHost,
+	DataFilterGeneral,
 } ENUM_TYPE_DATA;
 
 typedef enum _ENUM_TYPE_XML
 {
-	XmlApps = 0,
-	XmlRules,
-	XmlRulesConfig,
-	XmlProfileV3,
+	XmlProfileV3 = 3,
 	XmlProfileInternalV3,
 } ENUM_TYPE_XML;
 
@@ -70,8 +74,9 @@ typedef enum _ENUM_INFO_DATA
 	InfoTimerPtr,
 	InfoIconId,
 	InfoListviewId,
-	InfoIsSilent,
 	InfoIsEnabled,
+	InfoIsSilent,
+	InfoIsTimerSet,
 	InfoIsUndeletable,
 } ENUM_INFO_DATA;
 
@@ -95,7 +100,7 @@ typedef enum _ENUM_INSTALL_TYPE
 #define LOG_PATH_EXT L"log"
 #define LOG_PATH_DEFAULT L"%USERPROFILE%\\" APP_NAME_SHORT L"." LOG_PATH_EXT
 #define LOG_VIEWER_DEFAULT L"%SystemRoot%\\notepad.exe"
-#define LOG_SIZE_LIMIT_DEFAULT _r_calc_kilobytes2bytes (DWORD, 1)
+#define LOG_SIZE_LIMIT_DEFAULT _r_calc_kilobytes2bytes (1)
 
 #define PROC_WAITING_PID 0
 #define PROC_WAITING_NAME L"Waiting connections"
@@ -110,8 +115,14 @@ typedef enum _ENUM_INSTALL_TYPE
 
 #define WINDOWSSPYBLOCKER_URL L"https://github.com/crazy-max/WindowsSpyBlocker"
 
-#define BOOTTIME_FILTER_NAME L"Boot-time filter"
 #define SUBLAYER_WEIGHT_DEFAULT 0xFFFE
+
+#define FILTER_NAME_ICMP_ERROR L"BlockIcmpError"
+#define FILTER_NAME_TCP_RST_ONCLOSE L"BlockTcpRstOnClose"
+#define FILTER_NAME_BLOCK_CONNECTION L"BlockConnection"
+#define FILTER_NAME_BLOCK_CONNECTION_REDIRECT L"BlockConnectionRedirect"
+#define FILTER_NAME_BLOCK_RECVACCEPT L"BlockRecvAccept"
+#define FILTER_NAME_BOOTTIME L"BlockBoottime"
 
 #define DIVIDER_COPY L", "
 #define DIVIDER_CSV L","
@@ -140,11 +151,11 @@ typedef enum _ENUM_INSTALL_TYPE
 #define SZ_LOG_TITLE L"Date" DIVIDER_CSV L"User" DIVIDER_CSV L"Path" DIVIDER_CSV L"Address (" SZ_DIRECTION_LOCAL L")" DIVIDER_CSV L"Port (" SZ_DIRECTION_LOCAL L")" DIVIDER_CSV L"Address (" SZ_DIRECTION_REMOTE L")" DIVIDER_CSV L"Port (" SZ_DIRECTION_REMOTE L")" DIVIDER_CSV L"Protocol" DIVIDER_CSV L"Filter name" DIVIDER_CSV L"Filter ID" DIVIDER_CSV L"Direction" DIVIDER_CSV L"State\r\n"
 #define SZ_LOG_BODY L"\"%s\"" DIVIDER_CSV L"\"%s\"" DIVIDER_CSV L"\"%s\"" DIVIDER_CSV L"\"%s\"" DIVIDER_CSV L"\"%s\"" DIVIDER_CSV L"\"%s\"" DIVIDER_CSV L"\"%s\"" DIVIDER_CSV L"\"%s\"" DIVIDER_CSV L"\"%s\\%s\"" DIVIDER_CSV L"\"#%" TEXT (PRIu64) L"\"" DIVIDER_CSV L"\"%s\"" DIVIDER_CSV L"\"%s\"\r\n"
 
-#define UI_FONT L"Segoe UI"
-#define BACKUP_HOURS_PERIOD _r_calc_hours2seconds (time_t, 4) // make backup every X hour(s) (default)
+#define BACKUP_HOURS_PERIOD _r_calc_hours2seconds (4) // make backup every X hour(s) (default)
+#define UI_STATUSBAR_PARTS_COUNT 3
 
 #define LEN_IP_MAX 68
-#define MAP_CACHE_MAX 500 // half of thousand limit for unordered_map
+#define MAP_CACHE_MAX 512 // half of thousand limit for hashtable
 
 #define FILTERS_TIMEOUT 9000
 #define TRANSACTION_TIMEOUT 6000
@@ -157,18 +168,7 @@ typedef enum _ENUM_INSTALL_TYPE
 #define NOTIFY_TIMER_SAFETY_ID 666
 #define NOTIFY_TIMER_SAFETY_TIMEOUT 600
 
-#define NOTIFY_TIMEOUT_DEFAULT 30LL // sec.
-
-#define NOTIFY_LIMIT_POOL_SIZE 128
-#define NOTIFY_LIMIT_THREAD_COUNT 2
-#define NOTIFY_LIMIT_THREAD_MAX 4
-
-// pugixml document configuration
-#define PUGIXML_LOAD_FLAGS (pugi::parse_escapes)
-#define PUGIXML_LOAD_ENCODING (pugi::encoding_auto)
-
-#define PUGIXML_SAVE_FLAGS (pugi::format_indent | pugi::format_write_bom)
-#define PUGIXML_SAVE_ENCODING (pugi::encoding_wchar)
+#define NOTIFY_TIMEOUT_DEFAULT 30 // sec.
 
 // default colors
 #define LISTVIEW_COLOR_TIMER RGB(255, 190, 142)
@@ -194,78 +194,69 @@ typedef enum _ENUM_INSTALL_TYPE
 #define RULE_NAME_CCH_MAX 64
 #define RULE_RULE_CCH_MAX 256
 
-typedef std::vector<HANDLE> THREADS_VEC;
-typedef std::vector<GUID> GUIDS_VEC;
-typedef std::vector<SIZE_T> HASH_VEC;
-typedef std::unordered_map<SIZE_T, ENUM_TYPE_DATA> TYPES_MAP;
-typedef std::unordered_map<SIZE_T, BOOLEAN> HASHER_MAP;
-
 typedef struct tagSTATIC_DATA
 {
-	WCHAR profile_path[MAX_PATH] = {0};
-	WCHAR profile_path_backup[MAX_PATH] = {0};
-	WCHAR profile_internal_path[MAX_PATH] = {0};
+	WCHAR profile_path[MAX_PATH];
+	WCHAR profile_path_backup[MAX_PATH];
+	WCHAR profile_internal_path[MAX_PATH];
 
-	WCHAR windows_dir[MAX_PATH] = {0};
+	WCHAR windows_dir[MAX_PATH];
 
-	WCHAR search_string[128] = {0};
+	WCHAR search_string[128];
 
-	PR_STRING ntoskrnl_path = NULL;
-	PR_STRING svchost_path = NULL;
-	PR_STRING winstore_path = NULL;
+	PR_STRING ntoskrnl_path;
+	PR_STRING svchost_path;
+	PR_STRING winstore_path;
 
-	PSID pbuiltin_current_sid = NULL;
-	PSID pbuiltin_world_sid = NULL;
-	PSID pbuiltin_localservice_sid = NULL;
-	PSID pbuiltin_admins_sid = NULL;
-	PSID pbuiltin_netops_sid = NULL;
+	PSID pbuiltin_current_sid;
+	PSID pbuiltin_world_sid;
+	PSID pbuiltin_localservice_sid;
+	PSID pbuiltin_admins_sid;
+	PSID pbuiltin_netops_sid;
 
-	PSID pservice_mpssvc_sid = NULL;
-	PSID pservice_nlasvc_sid = NULL;
-	PSID pservice_policyagent_sid = NULL;
-	PSID pservice_rpcss_sid = NULL;
-	PSID pservice_wdiservicehost_sid = NULL;
+	PSID pservice_mpssvc_sid;
+	PSID pservice_nlasvc_sid;
+	PSID pservice_policyagent_sid;
+	PSID pservice_rpcss_sid;
+	PSID pservice_wdiservicehost_sid;
 
-	HIMAGELIST himg_toolbar = NULL;
-	HIMAGELIST himg_rules_small = NULL;
-	HIMAGELIST himg_rules_large = NULL;
+	HIMAGELIST himg_toolbar;
+	HIMAGELIST himg_rules_small;
+	HIMAGELIST himg_rules_large;
 
-	HBITMAP hbmp_enable = NULL;
-	HBITMAP hbmp_disable = NULL;
-	HBITMAP hbmp_allow = NULL;
-	HBITMAP hbmp_block = NULL;
-	HBITMAP hbmp_cross = NULL;
-	HBITMAP hbmp_rules = NULL;
-	HBITMAP hbmp_checked = NULL;
-	HBITMAP hbmp_unchecked = NULL;
+	HBITMAP hbmp_enable;
+	HBITMAP hbmp_disable;
+	HBITMAP hbmp_allow;
+	HBITMAP hbmp_block;
+	HBITMAP hbmp_cross;
+	HBITMAP hbmp_rules;
 
-	HANDLE hlogfile = NULL;
-	HANDLE hnetevent = NULL;
-	HANDLE done_evt = NULL;
-	HANDLE htimer = NULL;
-	HFONT hfont = NULL;
-	HICON hicon_large = NULL;
-	HICON hicon_small = NULL;
-	HICON hicon_uwp = NULL;
-	HWND hnotification = NULL;
-	HWND hrebar = NULL;
-	HWND hfind = NULL;
+	volatile HANDLE hlogfile;
+	volatile HANDLE hnetevent;
+	HANDLE done_evt;
+	HFONT hfont;
+	HICON hicon_large;
+	HICON hicon_small;
+	HICON hicon_uwp;
+	HWND hnotification;
+	HWND hrebar;
+	HWND hfind;
 
-	time_t profile_internal_timestamp = 0;
+	LONG64 profile_internal_timestamp;
 
-	SIZE_T ntoskrnl_hash = 0;
-	SIZE_T svchost_hash = 0;
-	SIZE_T my_hash = 0;
+	SIZE_T ntoskrnl_hash;
+	SIZE_T svchost_hash;
+	SIZE_T my_hash;
 
-	SIZE_T wd_length = 0;
+	SIZE_T wd_length;
 
-	INT icon_id = 0;
-	INT icon_uwp_id = 0;
+	INT icon_id;
+	INT icon_uwp_id;
 
-	BOOLEAN is_notifytimeout = FALSE;
-	BOOLEAN is_notifymouse = FALSE;
-	BOOLEAN is_neteventset = FALSE;
-	BOOLEAN is_filterstemporary = FALSE;
+	BOOLEAN is_notifytimeout;
+	BOOLEAN is_notifymouse;
+	BOOLEAN is_neteventset;
+	BOOLEAN is_filterstemporary;
 } STATIC_DATA, *PSTATIC_DATA;
 
 typedef struct tagITEM_LOG
@@ -289,7 +280,7 @@ typedef struct tagITEM_LOG
 
 	HICON hicon;
 
-	time_t timestamp;
+	LONG64 timestamp;
 
 	UINT64 filter_id;
 
@@ -314,7 +305,7 @@ typedef struct tagITEM_LOG
 
 typedef struct tagITEM_APP
 {
-	GUIDS_VEC* guids;
+	PR_ARRAY guids;
 
 	PR_STRING original_path;
 	PR_STRING display_name;
@@ -324,11 +315,13 @@ typedef struct tagITEM_APP
 	PITEM_LOG pnotification;
 	PR_BYTE pbytes; // service - PSECURITY_DESCRIPTOR / uwp - PSID (win8+)
 
-	HANDLE htimer;
+	PTP_TIMER htimer;
 
-	time_t timestamp;
-	time_t timer;
-	time_t last_notify;
+	LONG64 timestamp;
+	LONG64 timer;
+	LONG64 last_notify;
+
+	SIZE_T app_hash;
 
 	INT icon_id;
 
@@ -345,8 +338,8 @@ typedef struct tagITEM_APP
 
 typedef struct tagITEM_RULE
 {
-	HASHER_MAP* apps;
-	GUIDS_VEC* guids;
+	PR_HASHTABLE apps;
+	PR_ARRAY guids;
 
 	PR_STRING name;
 	PR_STRING rule_remote;
@@ -395,7 +388,8 @@ typedef struct tagITEM_NETWORK
 
 	PR_STRING path;
 	SIZE_T app_hash;
-	DWORD state;
+	SIZE_T network_hash;
+	ULONG state;
 	INT icon_id;
 	FWP_DIRECTION direction;
 	ENUM_TYPE_DATA type;
@@ -420,6 +414,13 @@ typedef struct tagITEM_STATUS
 typedef struct tagITEM_CONTEXT
 {
 	HWND hwnd;
+
+	union
+	{
+		PITEM_RULE ptr_rule;
+		PITEM_APP ptr_app;
+	};
+
 	union
 	{
 		struct
@@ -429,12 +430,15 @@ typedef struct tagITEM_CONTEXT
 		};
 		BOOLEAN is_install;
 	};
+
+	BOOLEAN is_settorules;
+
 } ITEM_CONTEXT, *PITEM_CONTEXT;
 
 typedef struct tagITEM_COLOR
 {
-	PR_STRING configName;
-	PR_STRING configValue;
+	PR_STRING config_name;
+	PR_STRING config_value;
 	SIZE_T hash;
 	COLORREF default_clr;
 	COLORREF new_clr;
@@ -462,37 +466,19 @@ typedef struct tagITEM_ADDRESS
 	BOOLEAN is_range;
 } ITEM_ADDRESS, *PITEM_ADDRESS;
 
-typedef struct tagITEM_LIST_HEAD
-{
-	SLIST_HEADER ListHead;
-
-	volatile LONG item_count;
-	volatile LONG thread_count;
-} ITEM_LIST_HEAD, *PITEM_LIST_HEAD;
-
 typedef struct tagITEM_LOG_LISTENTRY
 {
-	SLIST_ENTRY ListEntry;
+	SLIST_ENTRY list_entry;
 
 #ifndef _WIN64
-	ULONG_PTR Reserved;
+	ULONG_PTR reserved;
 #endif // _WIN64
 
-	PITEM_LOG Body;
+	PITEM_LOG body;
 
 	//SLIST_ENTRY ListEntry;
 	//QUAD_PTR Body;
 } ITEM_LOG_LISTENTRY, *PITEM_LOG_LISTENTRY;
 
-C_ASSERT (FIELD_OFFSET (ITEM_LOG_LISTENTRY, ListEntry) == 0x00);
-C_ASSERT (FIELD_OFFSET (ITEM_LOG_LISTENTRY, Body) == MEMORY_ALLOCATION_ALIGNMENT);
-
-typedef std::unordered_map<SIZE_T, PITEM_APP> OBJECTS_APP_MAP;
-typedef std::unordered_map<SIZE_T, PITEM_RULE_CONFIG> OBJECTS_RULE_CONFIG_MAP;
-typedef std::unordered_map<SIZE_T, PITEM_NETWORK> OBJECTS_NETWORK_MAP;
-typedef std::unordered_map<SIZE_T, PR_STRING> OBJECTS_STRINGS_MAP;
-
-typedef std::vector<PITEM_APP> OBJECTS_APP_VECTOR;
-typedef std::vector<PITEM_RULE> OBJECTS_RULE_VECTOR;
-typedef std::vector<PITEM_LOG> OBJECTS_LOG_VECTOR;
-
+C_ASSERT (FIELD_OFFSET (ITEM_LOG_LISTENTRY, list_entry) == 0x00);
+C_ASSERT (FIELD_OFFSET (ITEM_LOG_LISTENTRY, body) == MEMORY_ALLOCATION_ALIGNMENT);
