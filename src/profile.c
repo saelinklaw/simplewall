@@ -136,7 +136,7 @@ PITEM_APP _app_addapplication (HWND hwnd, ENUM_TYPE_DATA type, LPCWSTR path, PR_
 		}
 	}
 
-	app_hash = _r_str_hash (path, path_length);
+	app_hash = _r_str_hashex (path, path_length);
 	ptr_app = _r_obj_findhashtable (apps, app_hash);
 
 	if (ptr_app)
@@ -421,7 +421,7 @@ COLORREF _app_getappcolor (INT listview_id, SIZE_T app_hash, BOOLEAN is_systemap
 CleanupExit:
 
 	if (color_value)
-		return _app_getcolorvalue (_r_str_hash (color_value, _r_str_length (color_value)));
+		return _app_getcolorvalue (_r_str_hash (color_value));
 
 	return 0;
 }
@@ -572,7 +572,7 @@ COLORREF _app_getrulecolor (INT listview_id, SIZE_T rule_idx)
 		color_value = L"ColorSpecial";
 
 	if (color_value)
-		return _app_getcolorvalue (_r_str_hash (color_value, _r_str_length (color_value)));
+		return _app_getcolorvalue (_r_str_hash (color_value));
 
 	return 0;
 }
@@ -1368,20 +1368,6 @@ BOOLEAN _app_isappexists (const PITEM_APP ptr_app)
 	return FALSE;
 }
 
-BOOLEAN _app_isruletype (LPCWSTR rule, ULONG types)
-{
-	ULONG code;
-	NET_ADDRESS_INFO address_info;
-
-	RtlSecureZeroMemory (&address_info, sizeof (address_info));
-
-	// host - NET_STRING_NAMED_ADDRESS | NET_STRING_NAMED_SERVICE;
-	// ip - NET_STRING_IP_ADDRESS | NET_STRING_IP_SERVICE | NET_STRING_IP_NETWORK | NET_STRING_IP_ADDRESS_NO_SCOPE | NET_STRING_IP_SERVICE_NO_SCOPE
-	code = ParseNetworkString (rule, types, &address_info, NULL, NULL);
-
-	return (code == ERROR_SUCCESS);
-}
-
 VOID _app_openappdirectory (const PITEM_APP ptr_app)
 {
 	PR_STRING path = _app_getappinfo (ptr_app, InfoPath);
@@ -1393,54 +1379,6 @@ VOID _app_openappdirectory (const PITEM_APP ptr_app)
 
 		_r_obj_dereference (path);
 	}
-}
-
-BOOLEAN _app_isruleport (LPCWSTR rule, SIZE_T length)
-{
-	for (SIZE_T i = 0; i < length; i++)
-	{
-		if (iswdigit (rule[i]) == 0 && rule[i] != DIVIDER_RULE_RANGE)
-			return FALSE;
-	}
-
-	return TRUE;
-}
-
-BOOLEAN _app_isrulevalid (LPCWSTR rule, SIZE_T length)
-{
-	WCHAR valid_chars[] = {
-		L'.',
-		L':',
-		L'[',
-		L']',
-		L'/',
-		L'-',
-		L'_',
-	};
-
-	for (SIZE_T i = 0; i < length; i++)
-	{
-		if (iswalnum (rule[i]) == 0)
-		{
-			BOOLEAN is_valid = FALSE;
-
-			for (SIZE_T j = 0; j < RTL_NUMBER_OF (valid_chars); j++)
-			{
-				if (rule[i] == valid_chars[j])
-				{
-					is_valid = TRUE;
-					break;
-				}
-			}
-
-			if (is_valid)
-				continue;
-
-			return FALSE;
-		}
-	}
-
-	return TRUE;
 }
 
 BOOLEAN _app_profile_load_check_node (mxml_node_t* root_node, ENUM_TYPE_XML type)
@@ -1820,7 +1758,7 @@ VOID _app_profile_load_internal (LPCWSTR path, LPCWSTR resource_name, PLONG64 pt
 
 	if (resource_name)
 	{
-		PVOID pbuffer = _r_loadresource (NULL, resource_name, RT_RCDATA, NULL);
+		PVOID pbuffer = _r_res_loadresource (NULL, resource_name, RT_RCDATA, NULL);
 
 		if (pbuffer)
 		{
