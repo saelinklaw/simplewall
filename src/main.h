@@ -1,5 +1,5 @@
 // simplewall
-// Copyright (c) 2016-2020 Henry++
+// Copyright (c) 2016-2021 Henry++
 
 #pragma once
 
@@ -69,6 +69,7 @@ typedef enum _ENUM_INFO_DATA
 	InfoIconId,
 	InfoListviewId,
 	InfoIsEnabled,
+	InfoIsReadonly,
 	InfoIsSilent,
 	InfoIsTimerSet,
 	InfoIsUndeletable,
@@ -222,7 +223,6 @@ typedef struct tagSTATIC_DATA
 	HBITMAP hbmp_disable;
 	HBITMAP hbmp_allow;
 	HBITMAP hbmp_block;
-	HBITMAP hbmp_cross;
 	HBITMAP hbmp_rules;
 
 	volatile HANDLE hlogfile;
@@ -238,9 +238,9 @@ typedef struct tagSTATIC_DATA
 
 	LONG64 profile_internal_timestamp;
 
-	SIZE_T ntoskrnl_hash;
-	SIZE_T svchost_hash;
-	SIZE_T my_hash;
+	ULONG_PTR ntoskrnl_hash;
+	ULONG_PTR svchost_hash;
+	ULONG_PTR my_hash;
 
 	SIZE_T wd_length;
 
@@ -278,7 +278,7 @@ typedef struct tagITEM_LOG
 
 	UINT64 filter_id;
 
-	SIZE_T app_hash;
+	ULONG_PTR app_hash;
 
 	FWP_DIRECTION direction;
 
@@ -315,7 +315,7 @@ typedef struct tagITEM_APP
 	LONG64 timer;
 	LONG64 last_notify;
 
-	SIZE_T app_hash;
+	ULONG_PTR app_hash;
 
 	INT icon_id;
 
@@ -381,8 +381,8 @@ typedef struct tagITEM_NETWORK
 	};
 
 	PR_STRING path;
-	SIZE_T app_hash;
-	SIZE_T network_hash;
+	ULONG_PTR app_hash;
+	ULONG_PTR network_hash;
 	ULONG state;
 	INT icon_id;
 	FWP_DIRECTION direction;
@@ -411,29 +411,35 @@ typedef struct tagITEM_CONTEXT
 
 	union
 	{
-		PITEM_RULE ptr_rule;
-		PITEM_APP ptr_app;
-	};
+		struct
+		{
+			union
+			{
+				PITEM_RULE ptr_rule;
+				PITEM_APP ptr_app;
+			};
 
-	union
-	{
+			INT page_id;
+
+			BOOLEAN is_settorules;
+		};
+
 		struct
 		{
 			INT listview_id;
 			INT item_id;
+			INT current_length;
 		};
+
 		BOOLEAN is_install;
 	};
-
-	BOOLEAN is_settorules;
-
 } ITEM_CONTEXT, *PITEM_CONTEXT;
 
 typedef struct tagITEM_COLOR
 {
 	PR_STRING config_name;
 	PR_STRING config_value;
-	SIZE_T hash;
+	ULONG_PTR hash;
 	COLORREF default_clr;
 	COLORREF new_clr;
 	UINT locale_id;
@@ -467,6 +473,40 @@ typedef struct tagITEM_ADDRESS
 
 	BOOLEAN is_range;
 } ITEM_ADDRESS, *PITEM_ADDRESS;
+
+typedef struct _ITEM_LOG_CALLBACK
+{
+	union
+	{
+		UINT32 remote_addr4;
+		const FWP_BYTE_ARRAY16* remote_addr6;
+	} DUMMYUNIONNAME;
+
+	union
+	{
+		UINT32 local_addr4;
+		const FWP_BYTE_ARRAY16* local_addr6;
+	} DUMMYUNIONNAME2;
+
+	FWP_IP_VERSION version;
+
+	const FILETIME* timestamp;
+	PUINT8 app_id;
+	PSID package_id;
+	PSID user_id;
+
+	UINT64 filter_id;
+
+	UINT32 flags;
+	UINT32 direction;
+
+	UINT16 remote_port;
+	UINT16 local_port;
+	UINT16 layer_id;
+	UINT8 protocol;
+	BOOLEAN is_allow;
+	BOOLEAN is_loopback;
+} ITEM_LOG_CALLBACK, *PITEM_LOG_CALLBACK;
 
 typedef struct tagITEM_LOG_LISTENTRY
 {

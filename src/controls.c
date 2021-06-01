@@ -3,14 +3,19 @@
 
 #include "global.h"
 
-VOID _app_settab_id (HWND hwnd, INT page_id)
+VOID _app_settab_id (_In_ HWND hwnd, _In_ INT page_id)
 {
-	if (!page_id || ((INT)_r_tab_getlparam (hwnd, IDC_TAB, -1) == page_id && IsWindowVisible (GetDlgItem (hwnd, page_id))))
+	if (!page_id || ((INT)_r_tab_getitemlparam (hwnd, IDC_TAB, -1) == page_id && IsWindowVisible (GetDlgItem (hwnd, page_id))))
 		return;
 
-	for (INT i = 0; i < (INT)SendDlgItemMessage (hwnd, IDC_TAB, TCM_GETITEMCOUNT, 0, 0); i++)
+	INT count = _r_tab_getitemcount (hwnd, IDC_TAB);
+
+	if (!count)
+		return;
+
+	for (INT i = 0; i < count; i++)
 	{
-		INT listview_id = (INT)_r_tab_getlparam (hwnd, IDC_TAB, i);
+		INT listview_id = (INT)_r_tab_getitemlparam (hwnd, IDC_TAB, i);
 
 		if (listview_id == page_id)
 		{
@@ -22,7 +27,7 @@ VOID _app_settab_id (HWND hwnd, INT page_id)
 	_app_settab_id (hwnd, IDC_APPS_PROFILE);
 }
 
-UINT _app_getinterfacestatelocale (ENUM_INSTALL_TYPE install_type)
+UINT _app_getinterfacestatelocale (_In_ ENUM_INSTALL_TYPE install_type)
 {
 	if (install_type == InstallEnabled)
 		return IDS_STATUS_FILTERS_ACTIVE;
@@ -34,15 +39,12 @@ UINT _app_getinterfacestatelocale (ENUM_INSTALL_TYPE install_type)
 	return IDS_STATUS_FILTERS_INACTIVE;
 }
 
-BOOLEAN _app_initinterfacestate (HWND hwnd, BOOLEAN is_forced)
+BOOLEAN _app_initinterfacestate (_In_ HWND hwnd, _In_ BOOLEAN is_forced)
 {
-	if (!hwnd)
-		return FALSE;
-
-	if (is_forced || !!SendDlgItemMessage (config.hrebar, IDC_TOOLBAR, TB_ISBUTTONENABLED, IDM_TRAY_START, 0))
+	if (is_forced || _r_toolbar_isbuttonenabled (config.hrebar, IDC_TOOLBAR, IDM_TRAY_START))
 	{
-		SendDlgItemMessage (config.hrebar, IDC_TOOLBAR, TB_ENABLEBUTTON, IDM_TRAY_START, MAKELPARAM (FALSE, 0));
-		SendDlgItemMessage (config.hrebar, IDC_TOOLBAR, TB_ENABLEBUTTON, IDM_REFRESH, MAKELPARAM (FALSE, 0));
+		_r_toolbar_enablebutton (config.hrebar, IDC_TOOLBAR, IDM_TRAY_START, FALSE);
+		_r_toolbar_enablebutton (config.hrebar, IDC_TOOLBAR, IDM_REFRESH, FALSE);
 
 		_r_status_settextformat (hwnd, IDC_STATUSBAR, 0, L"%s...", _r_locale_getstring (IDS_STATUS_FILTERS_PROCESSING));
 
@@ -52,32 +54,29 @@ BOOLEAN _app_initinterfacestate (HWND hwnd, BOOLEAN is_forced)
 	return FALSE;
 }
 
-VOID _app_restoreinterfacestate (HWND hwnd, BOOLEAN is_enabled)
+VOID _app_restoreinterfacestate (_In_ HWND hwnd, _In_ BOOLEAN is_enabled)
 {
 	if (!is_enabled)
 		return;
 
-	SendDlgItemMessage (config.hrebar, IDC_TOOLBAR, TB_ENABLEBUTTON, IDM_TRAY_START, MAKELPARAM (TRUE, 0));
-	SendDlgItemMessage (config.hrebar, IDC_TOOLBAR, TB_ENABLEBUTTON, IDM_REFRESH, MAKELPARAM (TRUE, 0));
+	_r_toolbar_enablebutton (config.hrebar, IDC_TOOLBAR, IDM_TRAY_START, TRUE);
+	_r_toolbar_enablebutton (config.hrebar, IDC_TOOLBAR, IDM_REFRESH, TRUE);
 
-	ENUM_INSTALL_TYPE install_type = _wfp_isfiltersinstalled ();
-
-	_r_status_settext (hwnd, IDC_STATUSBAR, 0, _r_locale_getstring (_app_getinterfacestatelocale (install_type)));
+	_r_status_settext (hwnd, IDC_STATUSBAR, 0, _r_locale_getstring (_app_getinterfacestatelocale (_wfp_isfiltersinstalled ())));
 }
 
-VOID _app_setinterfacestate (HWND hwnd)
+VOID _app_setinterfacestate (_In_ HWND hwnd)
 {
 	ENUM_INSTALL_TYPE install_type = _wfp_isfiltersinstalled ();
 
 	BOOLEAN is_filtersinstalled = (install_type != InstallDisabled);
-	INT icon_id = is_filtersinstalled ? IDI_ACTIVE : IDI_INACTIVE;
 	UINT string_id = is_filtersinstalled ? IDS_TRAY_STOP : IDS_TRAY_START;
+	INT icon_id = is_filtersinstalled ? IDI_ACTIVE : IDI_INACTIVE;
 
 	HICON hico_sm = _r_app_getsharedimage (_r_sys_getimagebase (), icon_id, _r_dc_getsystemmetrics (hwnd, SM_CXSMICON));
 	HICON hico_big = _r_app_getsharedimage (_r_sys_getimagebase (), icon_id, _r_dc_getsystemmetrics (hwnd, SM_CXICON));
 
-	SendMessage (hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hico_sm);
-	SendMessage (hwnd, WM_SETICON, ICON_BIG, (LPARAM)hico_big);
+	_r_wnd_seticon (hwnd, hico_sm, hico_big);
 
 	//SendDlgItemMessage (hwnd, IDC_STATUSBAR, SB_SETICON, 0, (LPARAM)hico_sm);
 
@@ -89,7 +88,7 @@ VOID _app_setinterfacestate (HWND hwnd)
 	_r_tray_setinfo (hwnd, UID, hico_sm, APP_NAME);
 }
 
-VOID _app_imagelist_init (HWND hwnd)
+VOID _app_imagelist_init (_In_opt_ HWND hwnd)
 {
 	INT icon_size_small = _r_dc_getsystemmetrics (hwnd, SM_CXSMICON);
 	INT icon_size_large = _r_dc_getsystemmetrics (hwnd, SM_CXICON);
@@ -99,7 +98,6 @@ VOID _app_imagelist_init (HWND hwnd)
 	SAFE_DELETE_OBJECT (config.hbmp_disable);
 	SAFE_DELETE_OBJECT (config.hbmp_allow);
 	SAFE_DELETE_OBJECT (config.hbmp_block);
-	SAFE_DELETE_OBJECT (config.hbmp_cross);
 	SAFE_DELETE_OBJECT (config.hbmp_rules);
 
 	SAFE_DELETE_ICON (config.hicon_large);
@@ -131,7 +129,6 @@ VOID _app_imagelist_init (HWND hwnd)
 
 	config.hbmp_allow = _app_bitmapfrompng (NULL, MAKEINTRESOURCE (IDP_ALLOW), icon_size_small);
 	config.hbmp_block = _app_bitmapfrompng (NULL, MAKEINTRESOURCE (IDP_BLOCK), icon_size_small);
-	config.hbmp_cross = _app_bitmapfrompng (NULL, MAKEINTRESOURCE (IDP_CROSS), icon_size_small);
 	config.hbmp_rules = _app_bitmapfrompng (NULL, MAKEINTRESOURCE (IDP_SETTINGS), icon_size_small);
 
 	// toolbar imagelist
@@ -192,14 +189,9 @@ VOID _app_imagelist_init (HWND hwnd)
 	}
 }
 
-VOID _app_listviewresize (HWND hwnd, INT listview_id, BOOLEAN is_forced)
+VOID _app_listviewresize (_In_ HWND hwnd, _In_ INT listview_id, _In_ BOOLEAN is_forced)
 {
-	if (!listview_id || (!is_forced && !_r_config_getboolean (L"AutoSizeColumns", TRUE)))
-		return;
-
-	INT column_count = _r_listview_getcolumncount (hwnd, listview_id);
-
-	if (!column_count)
+	if (!is_forced && !_r_config_getboolean (L"AutoSizeColumns", TRUE))
 		return;
 
 	RECT rc_client;
@@ -209,6 +201,7 @@ VOID _app_listviewresize (HWND hwnd, INT listview_id, BOOLEAN is_forced)
 	HWND hheader;
 	HDC hdc_listview;
 	HDC hdc_header;
+	INT column_count;
 	INT column_width;
 	INT text_width;
 	INT calculated_width;
@@ -219,26 +212,33 @@ VOID _app_listviewresize (HWND hwnd, INT listview_id, BOOLEAN is_forced)
 	BOOLEAN is_tableview;
 
 	hlistview = GetDlgItem (hwnd, listview_id);
-	hheader = (HWND)SendMessage (hlistview, LVM_GETHEADER, 0, 0);
 
-	GetClientRect (hlistview, &rc_client);
+	if (!hlistview || !GetClientRect (hlistview, &rc_client))
+		return;
+
+	column_count = _r_listview_getcolumncount (hwnd, listview_id);
+
+	if (!column_count)
+		return;
+
+	hheader = (HWND)SendMessage (hlistview, LVM_GETHEADER, 0, 0);
 
 	// get device context and fix font set
 	hdc_listview = GetDC (hlistview);
 	hdc_header = GetDC (hheader);
 
-	if (hdc_listview)
-		SelectObject (hdc_listview, (HFONT)SendMessage (hlistview, WM_GETFONT, 0, 0)); // fix
+	if (!hdc_listview || !hdc_header)
+		return;
 
-	if (hdc_header)
-		SelectObject (hdc_header, (HFONT)SendMessage (hheader, WM_GETFONT, 0, 0)); // fix
+	SelectObject (hdc_listview, (HFONT)SendMessage (hlistview, WM_GETFONT, 0, 0)); // fix
+	SelectObject (hdc_header, (HFONT)SendMessage (hheader, WM_GETFONT, 0, 0)); // fix
 
 	calculated_width = 0;
 	column_general_id = 0; // set general column id
 
-	is_tableview = ((INT)SendMessage (hlistview, LVM_GETVIEW, 0, 0) == LV_VIEW_DETAILS);
+	is_tableview = (_r_listview_getview (hwnd, listview_id) == LV_VIEW_DETAILS);
 
-	total_width = _r_calc_rectwidth (&rc_client);
+	total_width = rc_client.right;
 
 	max_width = _r_dc_getdpi (hwnd, 158);
 	spacing = _r_dc_getsystemmetrics (hwnd, SM_CXSMICON);
@@ -254,7 +254,7 @@ VOID _app_listviewresize (HWND hwnd, INT listview_id, BOOLEAN is_forced)
 		if (!column_text)
 			continue;
 
-		column_width = _r_dc_getfontwidth (hdc_header, _r_obj_getstring (column_text), _r_obj_getstringlength (column_text)) + spacing;
+		column_width = _r_dc_getfontwidth (hdc_header, column_text->buffer, _r_obj_getstringlength (column_text)) + spacing;
 
 		if (column_width >= max_width)
 		{
@@ -271,7 +271,8 @@ VOID _app_listviewresize (HWND hwnd, INT listview_id, BOOLEAN is_forced)
 
 					if (item_text)
 					{
-						text_width = _r_dc_getfontwidth (hdc_listview, _r_obj_getstring (item_text), _r_obj_getstringlength (item_text)) + spacing;
+						text_width = _r_dc_getfontwidth (hdc_listview, item_text->buffer, _r_obj_getstringlength (item_text)) + spacing;
+
 						_r_obj_dereference (item_text);
 
 						// do not continue reaching higher and higher values for performance reason!
@@ -298,14 +299,11 @@ VOID _app_listviewresize (HWND hwnd, INT listview_id, BOOLEAN is_forced)
 	// set general column width
 	_r_listview_setcolumn (hwnd, listview_id, column_general_id, NULL, max (total_width - calculated_width, max_width));
 
-	if (hdc_listview)
-		ReleaseDC (hlistview, hdc_listview);
-
-	if (hdc_header)
-		ReleaseDC (hheader, hdc_header);
+	ReleaseDC (hlistview, hdc_listview);
+	ReleaseDC (hheader, hdc_header);
 }
 
-VOID _app_listviewsetview (HWND hwnd, INT listview_id)
+VOID _app_listviewsetview (_In_ HWND hwnd, _In_ INT listview_id)
 {
 	BOOLEAN is_mainview = (listview_id >= IDC_APPS_PROFILE) && (listview_id <= IDC_RULES_CUSTOM);
 	INT view_type = is_mainview ? _r_calc_clamp (_r_config_getinteger (L"ViewType", LV_VIEW_DETAILS), LV_VIEW_ICON, LV_VIEW_MAX) : LV_VIEW_DETAILS;
@@ -323,54 +321,58 @@ VOID _app_listviewsetview (HWND hwnd, INT listview_id)
 
 	if (himg)
 	{
-		SendDlgItemMessage (hwnd, listview_id, LVM_SETIMAGELIST, LVSIL_NORMAL, (LPARAM)himg);
-		SendDlgItemMessage (hwnd, listview_id, LVM_SETIMAGELIST, LVSIL_SMALL, (LPARAM)himg);
+		_r_listview_setimagelist (hwnd, listview_id, himg);
 	}
 
-	SendDlgItemMessage (hwnd, listview_id, LVM_SETVIEW, (WPARAM)view_type, 0);
+	_r_listview_setview (hwnd, listview_id, view_type);
 }
 
-VOID _app_listviewsetfont (HWND hwnd, INT listview_id, BOOLEAN is_forced)
+VOID _app_listviewsetfont (_In_ HWND hwnd, _In_ INT listview_id, _In_ BOOLEAN is_forced)
 {
-	LOGFONT lf = {0};
+	LOGFONT logfont = {0};
 
 	if (is_forced || !config.hfont)
 	{
 		SAFE_DELETE_OBJECT (config.hfont);
 
-		_r_config_getfont (L"Font", hwnd, &lf, NULL);
+		_r_config_getfont (L"Font", hwnd, &logfont, NULL);
 
-		config.hfont = CreateFontIndirect (&lf);
+		config.hfont = CreateFontIndirect (&logfont);
 	}
 
 	if (config.hfont)
 		SendDlgItemMessage (hwnd, listview_id, WM_SETFONT, (WPARAM)config.hfont, TRUE);
 }
 
-INT CALLBACK _app_listviewcompare_callback (LPARAM lparam1, LPARAM lparam2, LPARAM lparam)
+INT CALLBACK _app_listviewcompare_callback (_In_ LPARAM lparam1, _In_ LPARAM lparam2, _In_ LPARAM lparam)
 {
-	HWND hlistview = (HWND)lparam;
-	HWND hparent = GetParent (hlistview);
-	INT listview_id = GetDlgCtrlID (hlistview);
+	WCHAR config_name[128];
+	HWND hwnd;
+	INT listview_id;
+	INT result;
+	INT column_id;
+	BOOLEAN is_descend;
 
-	INT item1 = _app_getposition (hparent, listview_id, lparam1);
-	INT item2 = _app_getposition (hparent, listview_id, lparam2);
+	hwnd = GetParent ((HWND)lparam);
+	listview_id = GetDlgCtrlID ((HWND)lparam);
+
+	INT item1 = _app_getposition (hwnd, listview_id, lparam1);
+	INT item2 = _app_getposition (hwnd, listview_id, lparam2);
 
 	if (item1 == -1 || item2 == -1)
 		return 0;
 
-	WCHAR config_name[128];
-	_r_str_printf (config_name, RTL_NUMBER_OF (config_name), L"listview\\%04" TEXT (PRIX32), listview_id);
+	_r_str_printf (config_name, RTL_NUMBER_OF (config_name), L"listview\\%04" PRIX32, listview_id);
 
-	INT column_id = _r_config_getintegerex (L"SortColumn", 0, config_name);
-	BOOLEAN is_descend = _r_config_getbooleanex (L"SortIsDescending", FALSE, config_name);
+	column_id = _r_config_getintegerex (L"SortColumn", 0, config_name);
+	is_descend = _r_config_getbooleanex (L"SortIsDescending", FALSE, config_name);
 
-	INT result = 0;
+	result = 0;
 
-	if ((SendMessage (hlistview, LVM_GETEXTENDEDLISTVIEWSTYLE, 0, 0) & LVS_EX_CHECKBOXES) != 0)
+	if ((_r_listview_getexstyle (hwnd, listview_id) & LVS_EX_CHECKBOXES) != 0)
 	{
-		BOOLEAN is_checked1 = _r_listview_isitemchecked (hparent, listview_id, item1);
-		BOOLEAN is_checked2 = _r_listview_isitemchecked (hparent, listview_id, item2);
+		BOOLEAN is_checked1 = _r_listview_isitemchecked (hwnd, listview_id, item1);
+		BOOLEAN is_checked2 = _r_listview_isitemchecked (hwnd, listview_id, item2);
 
 		if (is_checked1 != is_checked2)
 		{
@@ -412,8 +414,8 @@ INT CALLBACK _app_listviewcompare_callback (LPARAM lparam1, LPARAM lparam2, LPAR
 
 	if (!result)
 	{
-		PR_STRING item_text_1 = _r_listview_getitemtext (hparent, listview_id, item1, column_id);
-		PR_STRING item_text_2 = _r_listview_getitemtext (hparent, listview_id, item2, column_id);
+		PR_STRING item_text_1 = _r_listview_getitemtext (hwnd, listview_id, item1, column_id);
+		PR_STRING item_text_2 = _r_listview_getitemtext (hwnd, listview_id, item2, column_id);
 
 		if (item_text_1 && item_text_2)
 		{
@@ -430,7 +432,7 @@ INT CALLBACK _app_listviewcompare_callback (LPARAM lparam1, LPARAM lparam2, LPAR
 	return is_descend ? -result : result;
 }
 
-VOID _app_listviewsort (HWND hwnd, INT listview_id, INT column_id, BOOLEAN is_notifycode)
+VOID _app_listviewsort (_In_ HWND hwnd, _In_ INT listview_id, _In_ INT column_id, _In_ BOOLEAN is_notifycode)
 {
 	HWND hlistview = GetDlgItem (hwnd, listview_id);
 
@@ -446,7 +448,7 @@ VOID _app_listviewsort (HWND hwnd, INT listview_id, INT column_id, BOOLEAN is_no
 		return;
 
 	WCHAR config_name[128];
-	_r_str_printf (config_name, RTL_NUMBER_OF (config_name), L"listview\\%04" TEXT (PRIX32), listview_id);
+	_r_str_printf (config_name, RTL_NUMBER_OF (config_name), L"listview\\%04" PRIX32, listview_id);
 
 	BOOLEAN is_descend = _r_config_getbooleanex (L"SortIsDescending", FALSE, config_name);
 
@@ -472,7 +474,7 @@ VOID _app_listviewsort (HWND hwnd, INT listview_id, INT column_id, BOOLEAN is_no
 	SendMessage (hlistview, LVM_SORTITEMS, (WPARAM)hlistview, (LPARAM)&_app_listviewcompare_callback);
 }
 
-VOID _app_toolbar_init (HWND hwnd)
+VOID _app_toolbar_init (_In_ HWND hwnd)
 {
 	config.hrebar = GetDlgItem (hwnd, IDC_REBAR);
 
@@ -495,6 +497,8 @@ VOID _app_toolbar_init (HWND hwnd)
 	_r_toolbar_addbutton (hwnd, IDC_TOOLBAR, IDM_TRAY_LOGCLEAR, 0, BTNS_BUTTON | BTNS_AUTOSIZE, TBSTATE_ENABLED, 7);
 	_r_toolbar_addseparator (hwnd, IDC_TOOLBAR);
 	_r_toolbar_addbutton (hwnd, IDC_TOOLBAR, IDM_DONATE, 0, BTNS_BUTTON | BTNS_AUTOSIZE, TBSTATE_ENABLED, 9);
+
+	_r_toolbar_resize (hwnd, IDC_TOOLBAR);
 
 	REBARBANDINFO rbi = {0};
 
@@ -535,13 +539,13 @@ VOID _app_toolbar_resize ()
 	SendMessage (config.hrebar, RB_SETBANDINFO, 0, (LPARAM)&rbi);
 }
 
-VOID _app_refreshgroups (HWND hwnd, INT listview_id)
+VOID _app_refreshgroups (_In_ HWND hwnd, _In_ INT listview_id)
 {
 	UINT group1_title = 0;
 	UINT group2_title = 0;
 	UINT group3_title = 0;
 
-	if (!SendDlgItemMessage (hwnd, listview_id, LVM_ISGROUPVIEWENABLED, 0, 0))
+	if (!_r_listview_isgroupviewenabled (hwnd, listview_id))
 		return;
 
 	if (listview_id >= IDC_APPS_PROFILE && listview_id <= IDC_APPS_UWP)
@@ -589,25 +593,19 @@ VOID _app_refreshgroups (HWND hwnd, INT listview_id)
 		}
 		else
 		{
-			LVITEM lvi = {0};
+			INT group_id = _r_listview_getitemgroup (hwnd, listview_id, i);
 
-			lvi.mask = LVIF_GROUPID;
-			lvi.iItem = i;
-
-			if (SendDlgItemMessage (hwnd, listview_id, LVM_GETITEM, 0, (LPARAM)&lvi))
+			if (group_id == 2)
 			{
-				if (lvi.iGroupId == 2)
-				{
-					group3_count += 1;
-				}
-				else if (lvi.iGroupId == 1)
-				{
-					group2_count += 1;
-				}
-				else
-				{
-					group1_count += 1;
-				}
+				group3_count += 1;
+			}
+			else if (group_id == 1)
+			{
+				group2_count += 1;
+			}
+			else
+			{
+				group1_count += 1;
 			}
 		}
 	}
@@ -641,9 +639,9 @@ VOID _app_refreshgroups (HWND hwnd, INT listview_id)
 	SAFE_DELETE_REFERENCE (localized_string);
 }
 
-VOID _app_refreshstatus (HWND hwnd, INT listview_id)
+VOID _app_refreshstatus (_In_ HWND hwnd, _In_ INT listview_id)
 {
-	ITEM_STATUS status = {0};
+	ITEM_STATUS status;
 
 	_app_getcount (&status);
 
@@ -668,13 +666,13 @@ VOID _app_refreshstatus (HWND hwnd, INT listview_id)
 			{
 				case 1:
 				{
-					text[i] = _r_format_string (L"%s: %" TEXT (PR_SIZE_T), _r_locale_getstring (IDS_STATUS_UNUSED_APPS), status.apps_unused_count);
+					text[i] = _r_format_string (L"%s: %" PR_SIZE_T, _r_locale_getstring (IDS_STATUS_UNUSED_APPS), status.apps_unused_count);
 					break;
 				}
 
 				case 2:
 				{
-					text[i] = _r_format_string (L"%s: %" TEXT (PR_SIZE_T), _r_locale_getstring (IDS_STATUS_TIMER_APPS), status.apps_timer_count);
+					text[i] = _r_format_string (L"%s: %" PR_SIZE_T, _r_locale_getstring (IDS_STATUS_TIMER_APPS), status.apps_timer_count);
 					break;
 				}
 			}
@@ -689,7 +687,7 @@ VOID _app_refreshstatus (HWND hwnd, INT listview_id)
 		RECT rc_client = {0};
 		GetClientRect (hstatus, &rc_client);
 
-		parts[0] = _r_calc_rectwidth (&rc_client) - lay - _r_dc_getsystemmetrics (hwnd, SM_CXVSCROLL) - (_r_dc_getsystemmetrics (hwnd, SM_CXBORDER) * 2);
+		parts[0] = rc_client.right - lay - _r_dc_getsystemmetrics (hwnd, SM_CXVSCROLL) - (_r_dc_getsystemmetrics (hwnd, SM_CXBORDER) * 2);
 		parts[1] = parts[0] + size[1];
 		parts[2] = parts[1] + size[2];
 
@@ -712,23 +710,13 @@ VOID _app_refreshstatus (HWND hwnd, INT listview_id)
 	if (listview_id)
 	{
 		if (listview_id == -1)
-			listview_id = (INT)_r_tab_getlparam (hwnd, IDC_TAB, -1);
+			listview_id = (INT)_r_tab_getitemlparam (hwnd, IDC_TAB, -1);
 
 		_app_refreshgroups (hwnd, listview_id);
 	}
 }
 
-INT _app_getposition (HWND hwnd, INT listview_id, LPARAM lparam)
-{
-	LVFINDINFO lvfi = {0};
-
-	lvfi.flags = LVFI_PARAM;
-	lvfi.lParam = lparam;
-
-	return (INT)SendDlgItemMessage (hwnd, listview_id, LVM_FINDITEM, (WPARAM)-1, (LPARAM)&lvfi);
-}
-
-VOID _app_showitem (HWND hwnd, INT listview_id, INT item, INT scroll_pos)
+VOID _app_showitem (_In_ HWND hwnd, _In_ INT listview_id, _In_ INT item_id, _In_ INT scroll_pos)
 {
 	HWND hlistview = GetDlgItem (hwnd, listview_id);
 
@@ -742,27 +730,24 @@ VOID _app_showitem (HWND hwnd, INT listview_id, INT item, INT scroll_pos)
 	if (!total_count)
 		return;
 
-	if (item != -1)
+	if (item_id != -1)
 	{
-		item = _r_calc_clamp (item, 0, total_count - 1);
+		item_id = _r_calc_clamp (item_id, 0, total_count - 1);
 
-		PostMessage (hlistview, LVM_ENSUREVISIBLE, (WPARAM)item, TRUE); // ensure item visible
-
-		ListView_SetItemState (hlistview, -1, 0, LVIS_SELECTED | LVIS_FOCUSED); // deselect all
-		ListView_SetItemState (hlistview, (WPARAM)item, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED); // select item
+		_r_listview_setitemvisible (hwnd, listview_id, item_id);
 	}
 
 	if (scroll_pos > 0)
 		PostMessage (hlistview, LVM_SCROLL, 0, (LPARAM)scroll_pos); // restore scroll position
 }
 
-BOOLEAN _app_showappitem (HWND hwnd, PITEM_APP ptr_app)
+BOOLEAN _app_showappitem (_In_ HWND hwnd, _In_ PITEM_APP ptr_app)
 {
 	INT listview_id = PtrToInt (_app_getappinfo (ptr_app, InfoListviewId));
 
 	if (listview_id)
 	{
-		if (listview_id == (INT)_r_tab_getlparam (hwnd, IDC_TAB, -1))
+		if (listview_id == (INT)_r_tab_getitemlparam (hwnd, IDC_TAB, -1))
 			_app_listviewsort (hwnd, listview_id, -1, FALSE);
 
 		_app_showitem (hwnd, listview_id, _app_getposition (hwnd, listview_id, ptr_app->app_hash), -1);

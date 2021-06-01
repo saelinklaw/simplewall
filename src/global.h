@@ -26,20 +26,6 @@
 #include "rapp.h"
 #include "main.h"
 
-#include "controls.h"
-#include "editor.h"
-#include "helper.h"
-#include "log.h"
-#include "messages.h"
-#include "notifications.h"
-#include "profile.h"
-#include "security.h"
-#include "timer.h"
-#include "wfp.h"
-
-#include "config.h"
-#include "..\..\mxml\mxml.h"
-
 #include "resource.h"
 
 DECLSPEC_SELECTANY STATIC_DATA config;
@@ -47,7 +33,7 @@ DECLSPEC_SELECTANY STATIC_DATA config;
 DECLSPEC_SELECTANY PR_HASHTABLE apps = NULL;
 DECLSPEC_SELECTANY PR_ARRAY rules_arr = NULL;
 DECLSPEC_SELECTANY PR_HASHTABLE rules_config = NULL;
-DECLSPEC_SELECTANY PR_HASHTABLE network_map = NULL;
+DECLSPEC_SELECTANY PR_HASHTABLE network_table = NULL;
 DECLSPEC_SELECTANY PR_LIST log_arr = NULL;
 
 DECLSPEC_SELECTANY PR_HASHTABLE cache_dns = NULL;
@@ -65,11 +51,21 @@ DECLSPEC_SELECTANY SLIST_HEADER log_list_stack;
 
 DECLSPEC_SELECTANY R_SPINLOCK lock_apps;
 DECLSPEC_SELECTANY R_SPINLOCK lock_rules;
+DECLSPEC_SELECTANY R_SPINLOCK lock_rules_config;
 DECLSPEC_SELECTANY R_SPINLOCK lock_apply;
 DECLSPEC_SELECTANY R_SPINLOCK lock_checkbox;
 DECLSPEC_SELECTANY R_SPINLOCK lock_logbusy;
+DECLSPEC_SELECTANY R_SPINLOCK lock_loglist;
 DECLSPEC_SELECTANY R_SPINLOCK lock_logthread;
+DECLSPEC_SELECTANY R_SPINLOCK lock_network;
+DECLSPEC_SELECTANY R_SPINLOCK lock_profile;
 DECLSPEC_SELECTANY R_SPINLOCK lock_transaction;
+
+DECLSPEC_SELECTANY R_SPINLOCK lock_cache_dns;
+DECLSPEC_SELECTANY R_SPINLOCK lock_cache_hosts;
+DECLSPEC_SELECTANY R_SPINLOCK lock_cache_signatures;
+DECLSPEC_SELECTANY R_SPINLOCK lock_cache_types;
+DECLSPEC_SELECTANY R_SPINLOCK lock_cache_versions;
 
 // dropped events callback subscription (win7+)
 #ifndef FWP_DIRECTION_IN
@@ -79,3 +75,14 @@ DECLSPEC_SELECTANY R_SPINLOCK lock_transaction;
 #ifndef FWP_DIRECTION_OUT
 #define FWP_DIRECTION_OUT 0x00003901L
 #endif
+
+#include "controls.h"
+#include "editor.h"
+#include "helper.h"
+#include "log.h"
+#include "messages.h"
+#include "notifications.h"
+#include "profile.h"
+#include "security.h"
+#include "timer.h"
+#include "wfp.h"

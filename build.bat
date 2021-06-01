@@ -1,4 +1,6 @@
 @echo off
 
 cd ..\builder
-build simplewall simplewall 3.2.4
+call build simplewall 3.3.3 simplewall
+
+pause

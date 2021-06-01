@@ -3,7 +3,7 @@
 
 #include "global.h"
 
-VOID NTAPI _app_dereferenceapp (PVOID entry)
+VOID NTAPI _app_dereferenceapp (_In_ PVOID entry)
 {
 	PITEM_APP ptr_item = entry;
 
@@ -17,7 +17,7 @@ VOID NTAPI _app_dereferenceapp (PVOID entry)
 	SAFE_DELETE_REFERENCE (ptr_item->guids);
 }
 
-VOID NTAPI _app_dereferenceruleconfig (PVOID entry)
+VOID NTAPI _app_dereferenceruleconfig (_In_ PVOID entry)
 {
 	PITEM_RULE_CONFIG ptr_rule_config = entry;
 
@@ -25,7 +25,7 @@ VOID NTAPI _app_dereferenceruleconfig (PVOID entry)
 	SAFE_DELETE_REFERENCE (ptr_rule_config->apps);
 }
 
-VOID NTAPI _app_dereferencelog (PVOID entry)
+VOID NTAPI _app_dereferencelog (_In_ PVOID entry)
 {
 	PITEM_LOG ptr_item = entry;
 
@@ -37,14 +37,14 @@ VOID NTAPI _app_dereferencelog (PVOID entry)
 	SAFE_DELETE_ICON (ptr_item->hicon);
 }
 
-VOID NTAPI _app_dereferencenetwork (PVOID entry)
+VOID NTAPI _app_dereferencenetwork (_In_ PVOID entry)
 {
 	PITEM_NETWORK ptr_network = entry;
 
 	SAFE_DELETE_REFERENCE (ptr_network->path);
 }
 
-VOID NTAPI _app_dereferencerule (PVOID entry)
+VOID NTAPI _app_dereferencerule (_In_ PVOID entry)
 {
 	PITEM_RULE ptr_item = entry;
 
@@ -57,18 +57,32 @@ VOID NTAPI _app_dereferencerule (PVOID entry)
 	SAFE_DELETE_REFERENCE (ptr_item->guids);
 }
 
-PR_HASHSTORE _app_addcachetable (PR_HASHTABLE hashtable, SIZE_T hash_code, PR_STRING string, INT number)
+_Ret_maybenull_
+PR_HASHSTORE _app_addcachetablevalue (_Inout_ PR_HASHTABLE hashtable, _In_ ULONG_PTR hash_code, _In_opt_ PR_STRING string, _In_opt_ LONG number)
 {
 	R_HASHSTORE hashstore;
+	PR_HASHSTORE result;
 
-	_r_obj_initializehashstoreex (&hashstore, string, number);
+	_r_obj_initializehashstore (&hashstore, string, number);
+
+	result = _r_obj_addhashtableitem (hashtable, hash_code, &hashstore);
+
+	return result;
+}
+
+_Ret_maybenull_
+PR_HASHSTORE _app_addcachetable (_Inout_ PR_HASHTABLE hashtable, _In_ ULONG_PTR hash_code, _In_ PR_SPINLOCK spin_lock, _In_opt_ PR_STRING string, _In_opt_ LONG number)
+{
+	PR_HASHSTORE result;
+
+	_r_spinlock_acquireshared (spin_lock);
 
 	// check hashtable overflow and remove
 	while (_r_obj_gethashtablesize (hashtable) >= MAP_CACHE_MAX)
 	{
 		PR_HASHSTORE hashtable_entry;
 		SIZE_T enum_key = 0;
-		SIZE_T hashtable_hash;
+		ULONG_PTR hashtable_hash;
 
 		if (!_r_obj_enumhashtable (hashtable, &hashtable_entry, &hashtable_hash, &enum_key))
 			break;
@@ -76,17 +90,40 @@ PR_HASHSTORE _app_addcachetable (PR_HASHTABLE hashtable, SIZE_T hash_code, PR_ST
 		_r_obj_removehashtableentry (hashtable, hashtable_hash);
 	}
 
-	return _r_obj_addhashtableitem (hashtable, hash_code, &hashstore);
+	_r_spinlock_releaseshared (spin_lock);
+
+	_r_spinlock_acquireexclusive (spin_lock);
+
+	result = _app_addcachetablevalue (hashtable, hash_code, string, number);
+
+	_r_spinlock_releaseexclusive (spin_lock);
+
+	return result;
 }
 
-PR_STRING _app_resolveaddress (ADDRESS_FAMILY af, LPCVOID paddr)
+_Ret_maybenull_
+PR_HASHSTORE _app_getcachetable (_Inout_ PR_HASHTABLE cache_table, _In_ ULONG_PTR hash_code, _In_ PR_SPINLOCK spin_lock)
+{
+	PR_HASHSTORE hashstore;
+
+	_r_spinlock_acquireshared (spin_lock);
+
+	hashstore = _r_obj_findhashtable (cache_table, hash_code);
+
+	_r_spinlock_releaseshared (spin_lock);
+
+	return hashstore;
+}
+
+_Ret_maybenull_
+PR_STRING _app_resolveaddress (_In_ ADDRESS_FAMILY af, _In_ LPCVOID address)
 {
 	PR_STRING string = NULL;
 	PR_STRING arpa_string;
 	PDNS_RECORD dns_records;
 	DNS_STATUS code;
 
-	arpa_string = _app_formataddress (af, 0, paddr, 0, FMTADDR_AS_ARPA);
+	arpa_string = _app_formataddress (af, 0, address, 0, FMTADDR_AS_ARPA);
 
 	if (arpa_string)
 	{
@@ -109,21 +146,24 @@ PR_STRING _app_resolveaddress (ADDRESS_FAMILY af, LPCVOID paddr)
 	return string;
 }
 
-PR_STRING _app_formataddress (ADDRESS_FAMILY af, UINT8 proto, LPCVOID paddr, UINT16 port, ULONG flags)
+_Ret_maybenull_
+PR_STRING _app_formataddress (_In_ ADDRESS_FAMILY af, _In_ UINT8 proto, _In_ LPCVOID address, _In_opt_ UINT16 port, _In_ ULONG flags)
 {
 	WCHAR formatted_address[DNS_MAX_NAME_BUFFER_LENGTH] = {0};
-	PIN_ADDR p4addr = (PIN_ADDR)paddr;
-	PIN6_ADDR p6addr = (PIN6_ADDR)paddr;
 	BOOLEAN is_success = FALSE;
 
 	if ((flags & FMTADDR_AS_ARPA) != 0)
 	{
 		if (af == AF_INET)
 		{
+			PIN_ADDR p4addr = (PIN_ADDR)address;
+
 			_r_str_appendformat (formatted_address, RTL_NUMBER_OF (formatted_address), L"%hhu.%hhu.%hhu.%hhu.%s", p4addr->s_impno, p4addr->s_lh, p4addr->s_host, p4addr->s_net, DNS_IP4_REVERSE_DOMAIN_STRING_W);
 		}
 		else if (af == AF_INET6)
 		{
+			PIN6_ADDR p6addr = (PIN6_ADDR)address;
+
 			for (INT i = sizeof (IN6_ADDR) - 1; i >= 0; i--)
 				_r_str_appendformat (formatted_address, RTL_NUMBER_OF (formatted_address), L"%hhx.%hhx.", p6addr->s6_addr[i] & 0xF, (p6addr->s6_addr[i] >> 4) & 0xF);
 
@@ -141,7 +181,7 @@ PR_STRING _app_formataddress (ADDRESS_FAMILY af, UINT8 proto, LPCVOID paddr, UIN
 
 		WCHAR addr_str[DNS_MAX_NAME_BUFFER_LENGTH] = {0};
 
-		if (_app_formatip (af, paddr, addr_str, RTL_NUMBER_OF (addr_str), (flags & FMTADDR_AS_RULE) != 0))
+		if (_app_formatip (af, address, addr_str, RTL_NUMBER_OF (addr_str), (flags & FMTADDR_AS_RULE) != 0))
 		{
 			if (af == AF_INET6 && port)
 			{
@@ -157,7 +197,7 @@ PR_STRING _app_formataddress (ADDRESS_FAMILY af, UINT8 proto, LPCVOID paddr, UIN
 
 		if (port && (flags & FMTADDR_USE_PROTOCOL) == 0)
 		{
-			_r_str_appendformat (formatted_address, RTL_NUMBER_OF (formatted_address), !_r_str_isempty (formatted_address) ? L":%" TEXT (PRIu16) : L"%" TEXT (PRIu16), port);
+			_r_str_appendformat (formatted_address, RTL_NUMBER_OF (formatted_address), !_r_str_isempty (formatted_address) ? L":%" PRIu16 : L"%" PRIu16, port);
 			is_success = TRUE;
 		}
 	}
@@ -167,8 +207,11 @@ PR_STRING _app_formataddress (ADDRESS_FAMILY af, UINT8 proto, LPCVOID paddr, UIN
 		if (is_success && _r_config_getboolean (L"IsNetworkResolutionsEnabled", FALSE))
 		{
 			PR_STRING domain_string = NULL;
-			SIZE_T addr_hash = _r_str_hash (formatted_address);
-			PR_HASHSTORE hashstore = _r_obj_findhashtable (cache_hosts, addr_hash);
+			ULONG_PTR addr_hash;
+			PR_HASHSTORE hashstore;
+
+			addr_hash = _r_str_hash (formatted_address);
+			hashstore = _app_getcachetable (cache_hosts, addr_hash, &lock_cache_hosts);
 
 			if (hashstore)
 			{
@@ -176,11 +219,11 @@ PR_STRING _app_formataddress (ADDRESS_FAMILY af, UINT8 proto, LPCVOID paddr, UIN
 			}
 			else
 			{
-				hashstore = _app_addcachetable (cache_hosts, addr_hash, NULL, 0);
+				hashstore = _app_addcachetable (cache_hosts, addr_hash, &lock_cache_hosts, NULL, 0);
 
 				if (hashstore)
 				{
-					domain_string = _app_resolveaddress (af, paddr);
+					domain_string = _app_resolveaddress (af, address);
 
 					if (domain_string)
 					{
@@ -202,14 +245,11 @@ PR_STRING _app_formataddress (ADDRESS_FAMILY af, UINT8 proto, LPCVOID paddr, UIN
 	return NULL;
 }
 
-BOOLEAN _app_formatip (ADDRESS_FAMILY af, LPCVOID paddr, LPWSTR out_buffer, ULONG buffer_size, BOOLEAN is_checkempty)
+BOOLEAN _app_formatip (_In_ ADDRESS_FAMILY af, _In_ LPCVOID address, _Out_writes_to_ (buffer_size, buffer_size) LPWSTR out_buffer, _In_ ULONG buffer_size, _In_ BOOLEAN is_checkempty)
 {
-	PIN_ADDR p4addr;
-	PIN6_ADDR p6addr;
-
 	if (af == AF_INET)
 	{
-		p4addr = (PIN_ADDR)paddr;
+		PIN_ADDR p4addr = (PIN_ADDR)address;
 
 		if (is_checkempty)
 		{
@@ -222,7 +262,7 @@ BOOLEAN _app_formatip (ADDRESS_FAMILY af, LPCVOID paddr, LPWSTR out_buffer, ULON
 	}
 	else if (af == AF_INET6)
 	{
-		p6addr = (PIN6_ADDR)paddr;
+		PIN6_ADDR p6addr = (PIN6_ADDR)address;
 
 		if (is_checkempty)
 		{
@@ -237,27 +277,28 @@ BOOLEAN _app_formatip (ADDRESS_FAMILY af, LPCVOID paddr, LPWSTR out_buffer, ULON
 	return FALSE;
 }
 
-PR_STRING _app_formatport (UINT16 port, UINT8 proto, BOOLEAN is_noempty)
+_Ret_maybenull_
+PR_STRING _app_formatport (_In_ UINT16 port, _In_ UINT8 proto, _In_ BOOLEAN is_noempty)
 {
 	if (!port)
 		return NULL;
 
 	if (is_noempty)
 	{
-		LPCWSTR sevice_string = _app_getservicename (port, proto, NULL);
+		LPCWSTR service_string = _app_getservicename (port, proto, NULL);
 
-		if (sevice_string)
+		if (service_string)
 		{
-			return _r_format_string (L"%" TEXT (PRIu16) L" (%s)", port, sevice_string);
+			return _r_format_string (L"%" PRIu16 L" (%s)", port, service_string);
 		}
 		else
 		{
-			return _r_format_string (L"%" TEXT (PRIu16), port);
+			return _r_format_string (L"%" PRIu16, port);
 		}
 	}
 	else
 	{
-		return _r_format_string (L"%" TEXT (PRIu16) L" (%s)", port, _app_getservicename (port, proto, SZ_UNKNOWN));
+		return _r_format_string (L"%" PRIu16 L" (%s)", port, _app_getservicename (port, proto, SZ_UNKNOWN));
 	}
 
 	return NULL;
@@ -284,7 +325,7 @@ VOID _app_freelogstack ()
 	}
 }
 
-VOID _app_getappicon (const PITEM_APP ptr_app, BOOLEAN is_small, PINT picon_id, HICON* picon)
+VOID _app_getappicon (_In_ const PITEM_APP ptr_app, _In_ BOOLEAN is_small, _Out_opt_ PINT picon_id, _Out_opt_ HICON* picon)
 {
 	BOOLEAN is_iconshidden = _r_config_getboolean (L"IsIconsHidden", FALSE);
 
@@ -317,7 +358,7 @@ VOID _app_getappicon (const PITEM_APP ptr_app, BOOLEAN is_small, PINT picon_id, 
 	}
 }
 
-LPCWSTR _app_getdisplayname (PITEM_APP ptr_app, BOOLEAN is_shortened)
+LPCWSTR _app_getdisplayname (_In_ PITEM_APP ptr_app, _In_ BOOLEAN is_shortened)
 {
 	if (ptr_app->app_hash == config.ntoskrnl_hash)
 	{
@@ -348,10 +389,11 @@ LPCWSTR _app_getdisplayname (PITEM_APP ptr_app, BOOLEAN is_shortened)
 			return ptr_app->short_name->buffer;
 	}
 
-	return ptr_app->real_path->buffer;
+	return ptr_app->real_path ? ptr_app->real_path->buffer : NULL;
 }
 
-BOOLEAN _app_getfileicon (LPCWSTR path, BOOLEAN is_small, PINT picon_id, HICON* picon)
+_Success_ (return)
+BOOLEAN _app_getfileicon (_In_ LPCWSTR path, _In_ BOOLEAN is_small, _Out_opt_ PINT picon_id, _Out_opt_ HICON * picon)
 {
 	SHFILEINFO shfi = {0};
 	ULONG flags = 0;
@@ -370,39 +412,34 @@ BOOLEAN _app_getfileicon (LPCWSTR path, BOOLEAN is_small, PINT picon_id, HICON* 
 		if (picon_id)
 			*picon_id = shfi.iIcon;
 
-		if (picon && shfi.hIcon)
-			*picon = shfi.hIcon;
-	}
-	else
-	{
-		if (picon_id)
-			*picon_id = config.icon_id;
-
 		if (picon)
-			*picon = CopyIcon (is_small ? config.hicon_small : config.hicon_large);
+			*picon = shfi.hIcon;
+
+		return TRUE;
 	}
 
-	return TRUE;
+	return FALSE;
 }
 
-PR_STRING _app_getsignatureinfo (PITEM_APP ptr_app)
+_Ret_maybenull_
+PR_STRING _app_getsignatureinfo (_Inout_ PITEM_APP ptr_app)
 {
 	if (_r_obj_isstringempty (ptr_app->real_path) || (ptr_app->type != DataAppRegular && ptr_app->type != DataAppService && ptr_app->type != DataAppUWP))
 		return NULL;
 
 	HANDLE hfile = NULL;
 	PR_STRING signature_cache_string = NULL;
-	PR_HASHSTORE hashstore = _r_obj_findhashtable (cache_signatures, ptr_app->app_hash);
+	PR_HASHSTORE hashstore;
+
+	hashstore = _app_getcachetable (cache_signatures, ptr_app->app_hash, &lock_cache_signatures);
 
 	if (hashstore)
 	{
-		signature_cache_string = hashstore->value_string;
-
-		goto CleanupExit;
+		return _r_obj_referencesafe (hashstore->value_string);
 	}
 	else
 	{
-		hashstore = _app_addcachetable (cache_signatures, ptr_app->app_hash, NULL, 0);
+		hashstore = _app_addcachetable (cache_signatures, ptr_app->app_hash, &lock_cache_signatures, NULL, 0);
 
 		if (!hashstore)
 			goto CleanupExit;
@@ -447,15 +484,16 @@ PR_STRING _app_getsignatureinfo (PITEM_APP ptr_app)
 
 						if (num_chars)
 						{
-							signature_cache_string = _r_obj_createstringex (NULL, num_chars * sizeof (WCHAR));
+							PR_STRING string = _r_obj_createstringex (NULL, num_chars * sizeof (WCHAR));
 
-							if (CertGetNameString (prov_cert->pCert, CERT_NAME_ATTR_TYPE, 0, szOID_COMMON_NAME, signature_cache_string->buffer, num_chars + 1))
+							if (CertGetNameString (prov_cert->pCert, CERT_NAME_ATTR_TYPE, 0, szOID_COMMON_NAME, string->buffer, num_chars + 1))
 							{
-								hashstore->value_string = signature_cache_string;
+								hashstore->value_string = string;
+								signature_cache_string = string;
 							}
 							else
 							{
-								_r_obj_clearreference (&signature_cache_string);
+								_r_obj_dereference (string);
 							}
 						}
 					}
@@ -477,27 +515,24 @@ CleanupExit:
 	return _r_obj_referencesafe (signature_cache_string);
 }
 
-PR_STRING _app_getversioninfo (PITEM_APP ptr_app)
+_Ret_maybenull_
+PR_STRING _app_getversioninfo (_In_ PITEM_APP ptr_app)
 {
 	if (_r_obj_isstringempty (ptr_app->real_path))
 		return NULL;
 
 	HINSTANCE hlib = NULL;
-	HRSRC hres = NULL;
-	HGLOBAL hglob = NULL;
-	PVOID version_info = NULL;
-	R_STRINGBUILDER version_cache = {0};
+	PVOID version_info;
+	R_STRINGBUILDER version_cache;
 	PR_STRING version_cache_string = NULL;
-	PR_HASHSTORE hashstore = _r_obj_findhashtable (cache_versions, ptr_app->app_hash);
+	PR_HASHSTORE hashstore;
+
+	hashstore = _app_getcachetable (cache_versions, ptr_app->app_hash, &lock_cache_versions);
 
 	if (hashstore)
-	{
-		version_cache_string = hashstore->value_string;
+		return _r_obj_referencesafe (hashstore->value_string);
 
-		goto CleanupExit;
-	}
-
-	hashstore = _app_addcachetable (cache_versions, ptr_app->app_hash, NULL, 0);
+	hashstore = _app_addcachetable (cache_versions, ptr_app->app_hash, &lock_cache_versions, NULL, 0);
 
 	if (!hashstore)
 		goto CleanupExit;
@@ -507,87 +542,102 @@ PR_STRING _app_getversioninfo (PITEM_APP ptr_app)
 	if (!hlib)
 		goto CleanupExit;
 
-	hres = FindResource (hlib, MAKEINTRESOURCE (VS_VERSION_INFO), RT_VERSION);
-
-	if (!hres)
-		goto CleanupExit;
-
-	hglob = LoadResource (hlib, hres);
-
-	if (!hglob)
-		goto CleanupExit;
-
-	version_info = LockResource (hglob);
+	version_info = _r_res_loadresource (hlib, MAKEINTRESOURCE (VS_VERSION_INFO), RT_VERSION, NULL);
 
 	if (version_info)
 	{
 		_r_obj_initializestringbuilder (&version_cache);
 
-		PVOID buffer;
-		ULONG lang_id;
-		UINT length;
+		UINT lang_id[4] = {0};
+		UINT code_page[4] = {0};
 
-		WCHAR author_entry[128];
-		WCHAR description_entry[128];
+		C_ASSERT (RTL_NUMBER_OF (lang_id) == RTL_NUMBER_OF (code_page));
 
-		if (VerQueryValue (version_info, L"\\VarFileInfo\\Translation", &buffer, &length) && length == sizeof (UINT))
+		// Load language and codepage from the file
+		_r_res_querytranslation (version_info, &lang_id[0], &code_page[0]);
+
+		// Use the default language and codepage from the file
+		lang_id[1] = GetUserDefaultLangID ();
+		code_page[1] = code_page[0];
+
+		// Use the language from the DLL and Latin codepage (most common)
+		lang_id[2] = lang_id[0];
+		code_page[2] = 1252;
+
+		// Use the default language and Latin codepage (most common)
+		lang_id[2] = GetUserDefaultLangID ();
+		code_page[2] = 1252;
+
+		PR_STRING description;
+		PR_STRING company;
+		VS_FIXEDFILEINFO* ver_info = NULL;
+
+		for (SIZE_T i = 0; i < RTL_NUMBER_OF (lang_id); i++)
 		{
-			memcpy (&lang_id, buffer, length);
+			if (!lang_id[i] || !code_page[i])
+				continue;
 
-			_r_str_printf (author_entry, RTL_NUMBER_OF (author_entry), L"\\StringFileInfo\\%02X%02X%02X%02X\\CompanyName", (lang_id & 0xff00) >> 8, lang_id & 0xff, (lang_id & 0xff000000) >> 24, (lang_id & 0xff0000) >> 16);
-			_r_str_printf (description_entry, RTL_NUMBER_OF (description_entry), L"\\StringFileInfo\\%02X%02X%02X%02X\\FileDescription", (lang_id & 0xff00) >> 8, lang_id & 0xff, (lang_id & 0xff000000) >> 24, (lang_id & 0xff0000) >> 16);
-		}
-		else
-		{
-			_r_str_printf (author_entry, RTL_NUMBER_OF (author_entry), L"\\StringFileInfo\\%04X04B0\\CompanyName", GetUserDefaultLangID ());
-			_r_str_printf (description_entry, RTL_NUMBER_OF (description_entry), L"\\StringFileInfo\\%04X04B0\\FileDescription", GetUserDefaultLangID ());
-		}
+			// get file description
+			description = _r_res_querystring (version_info, L"FileDescription", lang_id[i], code_page[i]);
 
-		if (VerQueryValue (version_info, description_entry, &buffer, &length))
-		{
-			_r_obj_appendstringbuilderformat (&version_cache, SZ_TAB L"%s", buffer);
-
-			VS_FIXEDFILEINFO* ver_info;
-
-			if (VerQueryValue (version_info, L"\\", &ver_info, &length))
+			if (description)
 			{
-				_r_obj_appendstringbuilderformat (&version_cache, L" %d.%d", HIWORD (ver_info->dwFileVersionMS), LOWORD (ver_info->dwFileVersionMS));
+				_r_obj_appendstringbuilder (&version_cache, SZ_TAB);
+				_r_obj_appendstringbuilderstring (&version_cache, description);
 
-				if (HIWORD (ver_info->dwFileVersionLS) || LOWORD (ver_info->dwFileVersionLS))
+				// get file version
+				if (_r_res_queryversion (version_info, &ver_info))
 				{
-					_r_obj_appendstringbuilderformat (&version_cache, L".%d", HIWORD (ver_info->dwFileVersionLS));
+					_r_obj_appendstringbuilderformat (&version_cache, L" %d.%d", HIWORD (ver_info->dwFileVersionMS), LOWORD (ver_info->dwFileVersionMS));
 
-					if (LOWORD (ver_info->dwFileVersionLS))
-						_r_obj_appendstringbuilderformat (&version_cache, L".%d", LOWORD (ver_info->dwFileVersionLS));
+					if (HIWORD (ver_info->dwFileVersionLS) || LOWORD (ver_info->dwFileVersionLS))
+					{
+						_r_obj_appendstringbuilderformat (&version_cache, L".%d", HIWORD (ver_info->dwFileVersionLS));
+
+						if (LOWORD (ver_info->dwFileVersionLS))
+							_r_obj_appendstringbuilderformat (&version_cache, L".%d", LOWORD (ver_info->dwFileVersionLS));
+					}
 				}
+
+				_r_obj_appendstringbuilder (&version_cache, L"\r\n");
+
+				_r_obj_dereference (description);
 			}
 
-			_r_obj_appendstringbuilder (&version_cache, L"\r\n");
+			// get file company
+			company = _r_res_querystring (version_info, L"CompanyName", lang_id[i], code_page[i]);
+
+			if (company)
+			{
+				_r_obj_appendstringbuilder (&version_cache, SZ_TAB);
+				_r_obj_appendstringbuilderstring (&version_cache, company);
+				_r_obj_appendstringbuilder (&version_cache, L"\r\n");
+
+				_r_obj_dereference (company);
+			}
+
+			if (description || company) // locale was right
+				break;
 		}
 
-		if (VerQueryValue (version_info, author_entry, &buffer, &length))
-		{
-			_r_obj_appendstringbuilderformat (&version_cache, SZ_TAB L"%s\r\n", buffer);
-		}
+		PR_STRING string;
 
-		version_cache_string = _r_obj_finalstringbuilder (&version_cache);
+		string = _r_obj_finalstringbuilder (&version_cache);
 
-		_r_obj_trimstring (version_cache_string, DIVIDER_TRIM);
+		_r_obj_trimstring (string, DIVIDER_TRIM);
 
-		if (_r_obj_isstringempty (version_cache_string))
+		if (_r_obj_isstringempty (string))
 		{
 			_r_obj_deletestringbuilder (&version_cache);
 
 			goto CleanupExit;
 		}
 
-		hashstore->value_string = version_cache_string;
+		hashstore->value_string = string;
+		version_cache_string = string;
 	}
 
 CleanupExit:
-
-	if (hglob)
-		FreeResource (hglob);
 
 	if (hlib)
 		FreeLibrary (hlib);
@@ -595,7 +645,8 @@ CleanupExit:
 	return _r_obj_referencesafe (version_cache_string);
 }
 
-LPCWSTR _app_getservicename (UINT16 port, UINT8 proto, LPCWSTR default_value)
+_Ret_maybenull_
+LPCWSTR _app_getservicename (_In_ UINT16 port, _In_ UINT8 proto, _In_opt_ LPCWSTR default_value)
 {
 	switch (port)
 	{
@@ -1278,7 +1329,8 @@ LPCWSTR _app_getservicename (UINT16 port, UINT8 proto, LPCWSTR default_value)
 	return default_value;
 }
 
-LPCWSTR _app_getprotoname (UINT8 proto, ADDRESS_FAMILY af, LPCWSTR default_value)
+_Ret_maybenull_
+LPCWSTR _app_getprotoname (_In_ UINT8 proto, _In_ ADDRESS_FAMILY af, _In_opt_ LPCWSTR default_value)
 {
 	switch (proto)
 	{
@@ -1355,7 +1407,8 @@ LPCWSTR _app_getprotoname (UINT8 proto, ADDRESS_FAMILY af, LPCWSTR default_value
 	return default_value;
 }
 
-LPCWSTR _app_getconnectionstatusname (ULONG state, LPCWSTR default_value)
+_Ret_maybenull_
+LPCWSTR _app_getconnectionstatusname (_In_ ULONG state, _In_opt_ LPCWSTR default_value)
 {
 	switch (state)
 	{
@@ -1399,7 +1452,8 @@ LPCWSTR _app_getconnectionstatusname (ULONG state, LPCWSTR default_value)
 	return default_value;
 }
 
-PR_STRING _app_getdirectionname (FWP_DIRECTION direction, BOOLEAN is_loopback, BOOLEAN is_localized)
+_Ret_maybenull_
+PR_STRING _app_getdirectionname (_In_ FWP_DIRECTION direction, _In_ BOOLEAN is_loopback, _In_ BOOLEAN is_localized)
 {
 	LPCWSTR text = NULL;
 
@@ -1443,7 +1497,7 @@ PR_STRING _app_getdirectionname (FWP_DIRECTION direction, BOOLEAN is_loopback, B
 	return _r_obj_createstring (text);
 }
 
-COLORREF _app_getcolorvalue (SIZE_T color_hash)
+COLORREF _app_getcolorvalue (_In_ SIZE_T color_hash)
 {
 	if (!color_hash)
 		return 0;
@@ -1588,7 +1642,7 @@ PR_STRING _app_getnetworkpath (ULONG pid, PULONG64 pmodules, PITEM_NETWORK ptr_n
 
 	if (!_r_obj_isstringempty (process_name))
 	{
-		SIZE_T app_hash = _r_obj_getstringhash (process_name);
+		ULONG_PTR app_hash = _r_obj_getstringhash (process_name);
 
 		ptr_network->app_hash = app_hash;
 		ptr_network->icon_id = PtrToInt (_app_getappinfobyhash (app_hash, InfoIconId));
@@ -1605,12 +1659,12 @@ PR_STRING _app_getnetworkpath (ULONG pid, PULONG64 pmodules, PITEM_NETWORK ptr_n
 	return process_name;
 }
 
-SIZE_T _app_getnetworkhash (ADDRESS_FAMILY af, ULONG pid, LPCVOID remote_addr, ULONG remote_port, LPCVOID local_addr, ULONG local_port, UINT8 proto, ULONG state)
+ULONG_PTR _app_getnetworkhash (ADDRESS_FAMILY af, ULONG pid, LPCVOID remote_addr, ULONG remote_port, LPCVOID local_addr, ULONG local_port, UINT8 proto, ULONG state)
 {
 	WCHAR remote_address[LEN_IP_MAX] = {0};
 	WCHAR local_address[LEN_IP_MAX] = {0};
 	PR_STRING network_string;
-	SIZE_T network_hash;
+	ULONG_PTR network_hash;
 
 	if (remote_addr)
 		_app_formatip (af, remote_addr, remote_address, RTL_NUMBER_OF (remote_address), FALSE);
@@ -1618,7 +1672,7 @@ SIZE_T _app_getnetworkhash (ADDRESS_FAMILY af, ULONG pid, LPCVOID remote_addr, U
 	if (local_addr)
 		_app_formatip (af, local_addr, local_address, RTL_NUMBER_OF (local_address), FALSE);
 
-	network_string = _r_format_string (L"%" TEXT (PRIu8) L"_%" TEXT (PR_ULONG) L"_%s_%" TEXT (PR_ULONG) L"_%s_%" TEXT (PR_ULONG) L"_%" TEXT (PRIu8) L"_%" TEXT (PR_ULONG),
+	network_string = _r_format_string (L"%" PRIu8 L"_%" PR_ULONG L"_%s_%" PR_ULONG L"_%s_%" PR_ULONG L"_%" PRIu8 L"_%" PR_ULONG,
 									   af,
 									   pid,
 									   remote_address,
@@ -1669,27 +1723,29 @@ BOOLEAN _app_isvalidconnection (ADDRESS_FAMILY af, LPCVOID paddr)
 	return FALSE;
 }
 
-VOID _app_generate_connections (PR_HASHTABLE checker_map)
+VOID _app_generate_connections (_Inout_ PR_HASHTABLE checker_map)
 {
 	_r_obj_clearhashtable (checker_map);
 
 	ITEM_NETWORK network;
 
+	PVOID buffer;
 	ULONG allocated_size = 0x4000;
-	PVOID network_table = _r_mem_allocatezero (allocated_size);
-
 	ULONG required_size = 0;
+
+	buffer = _r_mem_allocatezero (allocated_size);
+
 	GetExtendedTcpTable (NULL, &required_size, FALSE, AF_INET, TCP_TABLE_OWNER_MODULE_ALL, 0);
 
 	if (required_size)
 	{
 		if (allocated_size < required_size)
 		{
-			network_table = _r_mem_reallocatezero (network_table, required_size);
+			buffer = _r_mem_reallocatezero (buffer, required_size);
 			allocated_size = required_size;
 		}
 
-		PMIB_TCPTABLE_OWNER_MODULE tcp4_table = network_table;
+		PMIB_TCPTABLE_OWNER_MODULE tcp4_table = buffer;
 
 		if (GetExtendedTcpTable (tcp4_table, &required_size, FALSE, AF_INET, TCP_TABLE_OWNER_MODULE_ALL, 0) == NO_ERROR)
 		{
@@ -1705,9 +1761,9 @@ VOID _app_generate_connections (PR_HASHTABLE checker_map)
 
 				network.network_hash = _app_getnetworkhash (AF_INET, tcp4_table->table[i].dwOwningPid, &remote_addr, tcp4_table->table[i].dwRemotePort, &local_addr, tcp4_table->table[i].dwLocalPort, IPPROTO_TCP, tcp4_table->table[i].dwState);
 
-				if (_r_obj_findhashtable (network_map, network.network_hash))
+				if (_app_getnetworkitem (network.network_hash))
 				{
-					_app_addcachetable (checker_map, network.network_hash, NULL, 0);
+					_app_addcachetablevalue (checker_map, network.network_hash, NULL, 0);
 
 					continue;
 				}
@@ -1734,9 +1790,13 @@ VOID _app_generate_connections (PR_HASHTABLE checker_map)
 						network.is_connection = TRUE;
 				}
 
-				_r_obj_addhashtableitem (network_map, network.network_hash, &network);
+				_r_spinlock_acquireexclusive (&lock_network);
 
-				_app_addcachetable (checker_map, network.network_hash, NULL, 1);
+				_r_obj_addhashtableitem (network_table, network.network_hash, &network);
+
+				_r_spinlock_releaseexclusive (&lock_network);
+
+				_app_addcachetablevalue (checker_map, network.network_hash, NULL, 1);
 			}
 		}
 	}
@@ -1748,11 +1808,11 @@ VOID _app_generate_connections (PR_HASHTABLE checker_map)
 	{
 		if (allocated_size < required_size)
 		{
-			network_table = _r_mem_reallocatezero (network_table, required_size);
+			buffer = _r_mem_reallocatezero (buffer, required_size);
 			allocated_size = required_size;
 		}
 
-		PMIB_TCP6TABLE_OWNER_MODULE tcp6_table = network_table;
+		PMIB_TCP6TABLE_OWNER_MODULE tcp6_table = buffer;
 
 		if (GetExtendedTcpTable (tcp6_table, &required_size, FALSE, AF_INET6, TCP_TABLE_OWNER_MODULE_ALL, 0) == NO_ERROR)
 		{
@@ -1762,9 +1822,9 @@ VOID _app_generate_connections (PR_HASHTABLE checker_map)
 
 				network.network_hash = _app_getnetworkhash (AF_INET6, tcp6_table->table[i].dwOwningPid, tcp6_table->table[i].ucRemoteAddr, tcp6_table->table[i].dwRemotePort, tcp6_table->table[i].ucLocalAddr, tcp6_table->table[i].dwLocalPort, IPPROTO_TCP, tcp6_table->table[i].dwState);
 
-				if (_r_obj_findhashtable (network_map, network.network_hash))
+				if (_app_getnetworkitem (network.network_hash))
 				{
-					_app_addcachetable (checker_map, network.network_hash, NULL, 0);
+					_app_addcachetablevalue (checker_map, network.network_hash, NULL, 0);
 
 					continue;
 				}
@@ -1791,9 +1851,13 @@ VOID _app_generate_connections (PR_HASHTABLE checker_map)
 						network.is_connection = TRUE;
 				}
 
-				_r_obj_addhashtableitem (network_map, network.network_hash, &network);
+				_r_spinlock_acquireexclusive (&lock_network);
 
-				_app_addcachetable (checker_map, network.network_hash, NULL, 1);
+				_r_obj_addhashtableitem (network_table, network.network_hash, &network);
+
+				_r_spinlock_releaseexclusive (&lock_network);
+
+				_app_addcachetablevalue (checker_map, network.network_hash, NULL, 1);
 			}
 		}
 	}
@@ -1805,11 +1869,11 @@ VOID _app_generate_connections (PR_HASHTABLE checker_map)
 	{
 		if (allocated_size < required_size)
 		{
-			network_table = _r_mem_reallocatezero (network_table, required_size);
+			buffer = _r_mem_reallocatezero (buffer, required_size);
 			allocated_size = required_size;
 		}
 
-		PMIB_UDPTABLE_OWNER_MODULE udp4_table = network_table;
+		PMIB_UDPTABLE_OWNER_MODULE udp4_table = buffer;
 
 		if (GetExtendedUdpTable (udp4_table, &required_size, FALSE, AF_INET, UDP_TABLE_OWNER_MODULE, 0) == NO_ERROR)
 		{
@@ -1822,9 +1886,9 @@ VOID _app_generate_connections (PR_HASHTABLE checker_map)
 
 				network.network_hash = _app_getnetworkhash (AF_INET, udp4_table->table[i].dwOwningPid, NULL, 0, &local_addr, udp4_table->table[i].dwLocalPort, IPPROTO_UDP, 0);
 
-				if (_r_obj_findhashtable (network_map, network.network_hash))
+				if (_app_getnetworkitem (network.network_hash))
 				{
-					_app_addcachetable (checker_map, network.network_hash, NULL, 0);
+					_app_addcachetablevalue (checker_map, network.network_hash, NULL, 0);
 
 					continue;
 				}
@@ -1843,9 +1907,13 @@ VOID _app_generate_connections (PR_HASHTABLE checker_map)
 				if (_app_isvalidconnection (network.af, &network.local_addr))
 					network.is_connection = TRUE;
 
-				_r_obj_addhashtableitem (network_map, network.network_hash, &network);
+				_r_spinlock_acquireexclusive (&lock_network);
 
-				_app_addcachetable (checker_map, network.network_hash, NULL, 1);
+				_r_obj_addhashtableitem (network_table, network.network_hash, &network);
+
+				_r_spinlock_releaseexclusive (&lock_network);
+
+				_app_addcachetablevalue (checker_map, network.network_hash, NULL, 1);
 			}
 		}
 	}
@@ -1857,11 +1925,11 @@ VOID _app_generate_connections (PR_HASHTABLE checker_map)
 	{
 		if (allocated_size < required_size)
 		{
-			network_table = _r_mem_reallocatezero (network_table, required_size);
+			buffer = _r_mem_reallocatezero (buffer, required_size);
 			allocated_size = required_size;
 		}
 
-		PMIB_UDP6TABLE_OWNER_MODULE udp6_table = network_table;
+		PMIB_UDP6TABLE_OWNER_MODULE udp6_table = buffer;
 
 		if (GetExtendedUdpTable (udp6_table, &required_size, FALSE, AF_INET6, UDP_TABLE_OWNER_MODULE, 0) == NO_ERROR)
 		{
@@ -1871,9 +1939,9 @@ VOID _app_generate_connections (PR_HASHTABLE checker_map)
 
 				network.network_hash = _app_getnetworkhash (AF_INET6, udp6_table->table[i].dwOwningPid, NULL, 0, udp6_table->table[i].ucLocalAddr, udp6_table->table[i].dwLocalPort, IPPROTO_UDP, 0);
 
-				if (_r_obj_findhashtable (network_map, network.network_hash))
+				if (_app_getnetworkitem (network.network_hash))
 				{
-					_app_addcachetable (checker_map, network.network_hash, NULL, 0);
+					_app_addcachetablevalue (checker_map, network.network_hash, NULL, 0);
 
 					continue;
 				}
@@ -1892,15 +1960,19 @@ VOID _app_generate_connections (PR_HASHTABLE checker_map)
 				if (_app_isvalidconnection (network.af, &network.local_addr6))
 					network.is_connection = TRUE;
 
-				_r_obj_addhashtableitem (network_map, network.network_hash, &network);
+				_r_spinlock_acquireexclusive (&lock_network);
 
-				_app_addcachetable (checker_map, network.network_hash, NULL, 1);
+				_r_obj_addhashtableitem (network_table, network.network_hash, &network);
+
+				_r_spinlock_releaseexclusive (&lock_network);
+
+				_app_addcachetablevalue (checker_map, network.network_hash, NULL, 1);
 			}
 		}
 	}
 
-	if (network_table)
-		_r_mem_free (network_table);
+	if (buffer)
+		_r_mem_free (buffer);
 }
 
 VOID _app_generate_packages ()
@@ -1911,7 +1983,7 @@ VOID _app_generate_packages ()
 	PR_STRING display_name;
 	PR_STRING real_path;
 	PITEM_APP ptr_app;
-	SIZE_T app_hash;
+	ULONG_PTR app_hash;
 	HKEY hkey;
 	HKEY hsubkey;
 	ULONG key_index;
@@ -1921,103 +1993,103 @@ VOID _app_generate_packages ()
 
 	code = RegOpenKeyEx (HKEY_CURRENT_USER, L"Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository\\Packages", 0, KEY_READ, &hkey);
 
-	if (code == ERROR_SUCCESS)
+	if (code != ERROR_SUCCESS)
+		return;
+
+	max_length = _r_reg_querysubkeylength (hkey);
+
+	if (max_length)
 	{
-		max_length = _r_reg_querysubkeylength (hkey);
+		key_name = _r_obj_createstringex (NULL, max_length * sizeof (WCHAR));
+		key_index = 0;
 
-		if (max_length)
+		while (TRUE)
 		{
-			key_name = _r_obj_createstringex (NULL, max_length * sizeof (WCHAR));
-			key_index = 0;
+			size = max_length + 1;
 
-			while (TRUE)
+			if (RegEnumKeyEx (hkey, key_index++, key_name->buffer, &size, NULL, NULL, NULL, NULL) != ERROR_SUCCESS)
+				break;
+
+			_r_obj_trimstringtonullterminator (key_name);
+
+			code = RegOpenKeyEx (hkey, key_name->buffer, 0, KEY_READ, &hsubkey);
+
+			if (code == ERROR_SUCCESS)
 			{
-				size = max_length + 1;
+				package_sid = _r_reg_querybinary (hsubkey, NULL, L"PackageSid");
 
-				if (RegEnumKeyEx (hkey, key_index++, key_name->buffer, &size, NULL, NULL, NULL, NULL) != ERROR_SUCCESS)
-					break;
-
-				_r_obj_trimstringtonullterminator (key_name);
-
-				code = RegOpenKeyEx (hkey, key_name->buffer, 0, KEY_READ, &hsubkey);
-
-				if (code == ERROR_SUCCESS)
+				if (package_sid)
 				{
-					package_sid = _r_reg_querybinary (hsubkey, L"PackageSid");
-
-					if (package_sid)
+					if (RtlValidSid (package_sid->buffer))
 					{
-						if (RtlValidSid (package_sid->buffer))
+						package_sid_string = _r_str_fromsid (package_sid->buffer);
+
+						if (package_sid_string)
 						{
-							package_sid_string = _r_str_fromsid (package_sid->buffer);
+							app_hash = _r_obj_getstringhash (package_sid_string);
 
-							if (package_sid_string)
+							if (!_app_getappitem (app_hash))
 							{
-								app_hash = _r_obj_getstringhash (package_sid_string);
+								display_name = _r_reg_querystring (hsubkey, NULL, L"DisplayName");
 
-								if (!_r_obj_findhashtable (apps, app_hash))
+								if (display_name)
 								{
-									display_name = _r_reg_querystring (hsubkey, L"DisplayName");
-
-									if (display_name)
+									if (display_name->buffer[0] == L'@')
 									{
-										if (display_name->buffer[0] == L'@')
+										UINT localized_length = 0x200;
+										PR_STRING localized_name = _r_obj_createstringex (NULL, localized_length * sizeof (WCHAR));
+
+										if (SUCCEEDED (SHLoadIndirectString (display_name->buffer, localized_name->buffer, localized_length, NULL)))
 										{
-											UINT localized_length = 0x200;
-											PR_STRING localized_name = _r_obj_createstringex (NULL, localized_length * sizeof (WCHAR));
+											_r_obj_trimstringtonullterminator (localized_name);
 
-											if (SUCCEEDED (SHLoadIndirectString (display_name->buffer, localized_name->buffer, localized_length, NULL)))
-											{
-												_r_obj_trimstringtonullterminator (localized_name);
-
-												_r_obj_movereference (&display_name, localized_name);
-											}
-											else
-											{
-												_r_obj_dereference (localized_name);
-											}
+											_r_obj_movereference (&display_name, localized_name);
 										}
-
-										// use registry key name as fallback package name
-										if (_r_obj_isstringempty (display_name))
-											_r_obj_movereference (&display_name, _r_obj_reference (key_name));
-
-										real_path = _r_reg_querystring (hsubkey, L"PackageRootFolder");
-
-										ptr_app = _app_addapplication (NULL, DataAppUWP, package_sid_string->buffer, display_name, real_path);
-
-										if (ptr_app)
+										else
 										{
-											LONG64 timestamp = _r_reg_querytimestamp (hsubkey);
-
-											_app_setappinfo (ptr_app, InfoTimestampPtr, &timestamp);
-
-											_r_obj_movereference (&ptr_app->pbytes, _r_obj_reference (package_sid));
+											_r_obj_dereference (localized_name);
 										}
-
-										if (real_path)
-											_r_obj_dereference (real_path);
-
-										_r_obj_dereference (display_name);
 									}
+
+									// use registry key name as fallback package name
+									if (_r_obj_isstringempty (display_name))
+										_r_obj_movereference (&display_name, _r_obj_reference (key_name));
+
+									real_path = _r_reg_querystring (hsubkey, NULL, L"PackageRootFolder");
+
+									ptr_app = _app_addapplication (NULL, DataAppUWP, package_sid_string->buffer, display_name, real_path);
+
+									if (ptr_app)
+									{
+										LONG64 timestamp = _r_reg_querytimestamp (hsubkey);
+
+										_app_setappinfo (ptr_app, InfoTimestampPtr, &timestamp);
+
+										_r_obj_movereference (&ptr_app->pbytes, _r_obj_reference (package_sid));
+									}
+
+									if (real_path)
+										_r_obj_dereference (real_path);
+
+									_r_obj_dereference (display_name);
 								}
-
-								_r_obj_dereference (package_sid_string);
 							}
-						}
 
-						_r_obj_dereference (package_sid);
+							_r_obj_dereference (package_sid_string);
+						}
 					}
 
-					RegCloseKey (hsubkey);
+					_r_obj_dereference (package_sid);
 				}
-			}
 
-			_r_obj_dereference (key_name);
+				RegCloseKey (hsubkey);
+			}
 		}
 
-		RegCloseKey (hkey);
+		_r_obj_dereference (key_name);
 	}
+
+	RegCloseKey (hkey);
 }
 
 VOID _app_generate_services ()
@@ -2066,17 +2138,17 @@ VOID _app_generate_services ()
 	// now traverse each service to get information
 	if (buffer)
 	{
-		LPQUERY_SERVICE_CONFIG svconfig = NULL;
+		WCHAR general_key[256];
+		EXPLICIT_ACCESS ea;
 		LPENUM_SERVICE_STATUS_PROCESS service;
 		LPENUM_SERVICE_STATUS_PROCESS services;
 		PITEM_APP ptr_app;
-		SIZE_T app_hash;
-		ULONG required_length;
+		ULONG_PTR app_hash;
+		HKEY hkey;
+		PVOID service_sd;
+		ULONG sd_length;
 
 		services = (LPENUM_SERVICE_STATUS_PROCESS)buffer;
-
-		if (_r_sys_isosversiongreaterorequal (WINDOWS_10))
-			svconfig = _r_mem_allocatezero (0x1000);
 
 		for (ULONG i = 0; i < services_returned; i++)
 		{
@@ -2084,69 +2156,42 @@ VOID _app_generate_services ()
 
 			LPCWSTR service_name = service->lpServiceName;
 			LPCWSTR display_name = service->lpDisplayName;
-
-			if (svconfig && _r_sys_isosversiongreaterorequal (WINDOWS_10))
-			{
-				SC_HANDLE svc = OpenService (hsvcmgr, service_name, SERVICE_QUERY_CONFIG);
-
-				if (svc)
-				{
-					if (QueryServiceConfig (svc, svconfig, 0x1000, &required_length))
-					{
-						if ((svconfig->dwServiceType & SERVICE_USERSERVICE_INSTANCE) != 0)
-						{
-							CloseServiceHandle (svc);
-							continue;
-						}
-					}
-
-					CloseServiceHandle (svc);
-				}
-			}
+			PR_STRING service_path;
+			PSID service_sid;
+			LONG64 service_timestamp;
 
 			app_hash = _r_str_hash (service_name);
 
-			if (_r_obj_findhashtable (apps, app_hash))
+			if (_app_getappitem (app_hash))
 				continue;
 
-			PR_STRING service_path = NULL;
-			LONG64 service_timestamp = 0;
-
-			HKEY hkey;
-
-			WCHAR general_key[256];
-			WCHAR parameters_key[256];
-
 			_r_str_printf (general_key, RTL_NUMBER_OF (general_key), L"System\\CurrentControlSet\\Services\\%s", service_name);
-			_r_str_printf (parameters_key, RTL_NUMBER_OF (parameters_key), L"System\\CurrentControlSet\\Services\\%s\\Parameters", service_name);
 
-			// query "ServiceDll" path
-			if (RegOpenKeyEx (HKEY_LOCAL_MACHINE, parameters_key, 0, KEY_READ, &hkey) == ERROR_SUCCESS)
+			if (RegOpenKeyEx (HKEY_LOCAL_MACHINE, general_key, 0, KEY_READ, &hkey) != ERROR_SUCCESS)
+				continue;
+
+			// skip userservice instances service types (win10+)
+			if (_r_sys_isosversiongreaterorequal (WINDOWS_10))
 			{
-				// query path
-				service_path = _r_reg_querystring (hkey, L"ServiceDll");
+				ULONG service_type = _r_reg_queryulong (hkey, NULL, L"Type");
 
-				// query timestamp
-				service_timestamp = _r_reg_querytimestamp (hkey);
-
-				RegCloseKey (hkey);
+				if (!service_type || (service_type & SERVICE_USERSERVICE_INSTANCE) != 0)
+				{
+					RegCloseKey (hkey);
+					continue;
+				}
 			}
 
-			// fallback
-			if (!service_path || !service_timestamp)
+			// query service path
+			service_path = _r_reg_querystring (hkey, L"Parameters", L"ServiceDLL");
+
+			if (!service_path)
+				service_path = _r_reg_querystring (hkey, NULL, L"ImagePath");
+
+			if (!service_path)
 			{
-				if (RegOpenKeyEx (HKEY_LOCAL_MACHINE, general_key, 0, KEY_READ, &hkey) == ERROR_SUCCESS)
-				{
-					// query path
-					if (!service_path)
-						service_path = _r_reg_querystring (hkey, L"ImagePath");
-
-					// query timestamp
-					if (!service_timestamp)
-						service_timestamp = _r_reg_querytimestamp (hkey);
-
-					RegCloseKey (hkey);
-				}
+				RegCloseKey (hkey);
+				continue;
 			}
 
 			if (!_r_obj_isstringempty (service_path))
@@ -2162,59 +2207,62 @@ VOID _app_generate_services ()
 					_r_obj_movereference (&service_path, converted_path);
 			}
 
-			PSID service_sid = _app_queryservicesid (service_name);
+			// query service timestamp
+			service_timestamp = _r_reg_querytimestamp (hkey);
 
-			if (service_sid)
+			// query service sid
+			service_sid = _app_queryservicesid (service_name);
+
+			if (!service_sid)
 			{
-				PVOID service_sd = NULL;
-				ULONG sd_length = 0;
+				_r_obj_dereference (service_path);
+				RegCloseKey (hkey);
 
-				EXPLICIT_ACCESS ea;
-				memset (&ea, 0, sizeof (ea));
-
-				// When evaluating SECURITY_DESCRIPTOR conditions, the filter engine
-				// checks for FWP_ACTRL_MATCH_FILTER access. If the DACL grants access,
-				// it does not mean that the traffic is allowed; it just means that the
-				// condition evaluates to true. Likewise if it denies access, the
-				// condition evaluates to false.
-				_app_setexplicitaccess (&ea, GRANT_ACCESS, FWP_ACTRL_MATCH_FILTER, NO_INHERITANCE, service_sid);
-
-				// Security descriptors must be in self-relative form (i.e., contiguous).
-				// The security descriptor returned by BuildSecurityDescriptorW is
-				// already self-relative, but if you're using another mechanism to build
-				// the descriptor, you may have to convert it. See MakeSelfRelativeSD for
-				// details.
-				if (BuildSecurityDescriptor (NULL, NULL, 1, &ea, 0, NULL, NULL, &sd_length, &service_sd) != ERROR_SUCCESS)
-				{
-					SAFE_DELETE_REFERENCE (service_path);
-					continue;
-				}
-
-				PR_STRING name_string = _r_obj_createstring (display_name);
-
-				ptr_app = _app_addapplication (NULL, DataAppService, service_name, name_string, service_path);
-
-				if (ptr_app)
-				{
-					_app_setappinfo (ptr_app, InfoTimestampPtr, &service_timestamp);
-
-					_r_obj_movereference (&ptr_app->pbytes, _r_obj_createbyteex (NULL, sd_length));
-
-					memcpy (ptr_app->pbytes->buffer, service_sd, sd_length);
-				}
-
-				_r_obj_dereference (name_string);
-
-				SAFE_DELETE_LOCAL (service_sd);
-
-				_r_mem_free (service_sid);
+				continue;
 			}
 
-			SAFE_DELETE_REFERENCE (service_path);
-		}
+			// When evaluating SECURITY_DESCRIPTOR conditions, the filter engine
+			// checks for FWP_ACTRL_MATCH_FILTER access. If the DACL grants access,
+			// it does not mean that the traffic is allowed; it just means that the
+			// condition evaluates to true. Likewise if it denies access, the
+			// condition evaluates to false.
+			_app_setexplicitaccess (&ea, GRANT_ACCESS, FWP_ACTRL_MATCH_FILTER, NO_INHERITANCE, service_sid);
 
-		if (svconfig)
-			_r_mem_free (svconfig);
+			// Security descriptors must be in self-relative form (i.e., contiguous).
+			// The security descriptor returned by BuildSecurityDescriptorW is
+			// already self-relative, but if you're using another mechanism to build
+			// the descriptor, you may have to convert it. See MakeSelfRelativeSD for
+			// details.
+			if (BuildSecurityDescriptor (NULL, NULL, 1, &ea, 0, NULL, NULL, &sd_length, &service_sd) != ERROR_SUCCESS || !service_sd)
+			{
+				_r_obj_dereference (service_path);
+				RegCloseKey (hkey);
+
+				continue;
+			}
+
+			PR_STRING name_string = _r_obj_createstring (display_name);
+
+			ptr_app = _app_addapplication (NULL, DataAppService, service_name, name_string, service_path);
+
+			if (ptr_app)
+			{
+				PR_BYTE bytes = _r_obj_createbyteex (NULL, sd_length);
+
+				memcpy (bytes->buffer, service_sd, sd_length);
+
+				_app_setappinfo (ptr_app, InfoTimestampPtr, &service_timestamp);
+
+				_r_obj_movereference (&ptr_app->pbytes, bytes);
+			}
+
+			LocalFree (service_sd);
+
+			_r_obj_dereference (name_string);
+			_r_obj_dereference (service_path);
+
+			_r_mem_free (service_sid);
+		}
 
 		_r_mem_free (buffer);
 	}
@@ -2222,15 +2270,107 @@ VOID _app_generate_services ()
 	CloseServiceHandle (hsvcmgr);
 }
 
-VOID _app_generate_timerscontrol (PVOID hwnd, INT ctrl_id, PITEM_APP ptr_app)
+VOID _app_generate_rulescontrol (_In_ HMENU hsubmenu, _In_opt_ ULONG_PTR app_hash)
+{
+	ITEM_STATUS status;
+
+	_app_getcount (&status);
+
+	if (!app_hash || !status.rules_count)
+	{
+		AppendMenu (hsubmenu, MF_SEPARATOR, 0, NULL);
+		AppendMenu (hsubmenu, MF_STRING, IDX_RULES_SPECIAL, _r_locale_getstring (IDS_STATUS_EMPTY));
+
+		_r_menu_enableitem (hsubmenu, IDX_RULES_SPECIAL, MF_BYCOMMAND, FALSE);
+	}
+	else
+	{
+		MENUITEMINFO mii;
+		WCHAR buffer[128];
+		PITEM_RULE ptr_rule;
+		UINT size_of;
+		BOOLEAN is_global;
+		BOOLEAN is_enabled;
+
+		size_of = sizeof (mii);
+
+		for (UINT8 type = 0; type < 2; type++)
+		{
+			if (type == 0)
+			{
+				if (!status.rules_predefined_count)
+					continue;
+			}
+			else
+			{
+				if (!status.rules_user_count)
+					continue;
+			}
+
+			AppendMenu (hsubmenu, MF_SEPARATOR, 0, NULL);
+
+			for (UINT8 loop = 0; loop < 2; loop++)
+			{
+				SIZE_T limit_group = 14; // limit rules
+
+				_r_spinlock_acquireshared (&lock_rules);
+
+				for (SIZE_T i = 0; i < _r_obj_getarraysize (rules_arr) && limit_group; i++)
+				{
+					ptr_rule = _r_obj_getarrayitem (rules_arr, i);
+
+					if (!ptr_rule)
+						continue;
+
+					is_global = (ptr_rule->is_enabled && _r_obj_ishashtableempty (ptr_rule->apps));
+					is_enabled = is_global || (ptr_rule->is_enabled && (_r_obj_findhashtable (ptr_rule->apps, app_hash)));
+
+					if (ptr_rule->type != DataRuleUser || (type == 0 && (!ptr_rule->is_readonly || is_global)) || (type == 1 && (ptr_rule->is_readonly || is_global)))
+						continue;
+
+					if ((loop == 0 && !is_enabled) || (loop == 1 && is_enabled))
+						continue;
+
+					_r_str_printf (buffer, RTL_NUMBER_OF (buffer), _r_locale_getstring (IDS_RULE_APPLY_2), _r_obj_getstring (ptr_rule->name));
+
+					if (ptr_rule->is_readonly)
+						_r_str_append (buffer, RTL_NUMBER_OF (buffer), SZ_RULE_INTERNAL_MENU);
+
+					memset (&mii, 0, size_of);
+
+					mii.cbSize = size_of;
+					mii.fMask = MIIM_ID | MIIM_FTYPE | MIIM_STATE | MIIM_STRING;
+					mii.fType = MFT_STRING;
+					mii.dwTypeData = buffer;
+					//mii.hbmpItem = ptr_rule->is_block ? config.hbmp_block : config.hbmp_allow;
+					//mii.hbmpChecked = config.hbmp_checked;
+					//mii.hbmpUnchecked = config.hbmp_unchecked;
+					mii.fState = (is_enabled ? MF_CHECKED : MF_UNCHECKED);
+					mii.wID = IDX_RULES_SPECIAL + (UINT)i;
+
+					InsertMenuItem (hsubmenu, mii.wID, FALSE, &mii);
+
+					limit_group -= 1;
+				}
+
+				_r_spinlock_releaseshared (&lock_rules);
+			}
+		}
+	}
+
+	AppendMenu (hsubmenu, MF_SEPARATOR, 0, NULL);
+	AppendMenu (hsubmenu, MF_STRING, IDM_OPENRULESEDITOR, _r_locale_getstring (IDS_OPENRULESEDITOR));
+}
+
+VOID _app_generate_timerscontrol (_In_ HMENU hsubmenu, _In_opt_ PITEM_APP ptr_app)
 {
 	WCHAR interval_string[128];
 	LONG64 current_time;
 	PVOID timer_ptr;
 	LONG64 app_time = 0;
+	LONG64 timestamp;
 	UINT index;
 	BOOLEAN is_checked = (ptr_app == NULL);
-	BOOLEAN is_menu = (ctrl_id == 0);
 
 	current_time = _r_unixtime_now ();
 
@@ -2240,12 +2380,6 @@ VOID _app_generate_timerscontrol (PVOID hwnd, INT ctrl_id, PITEM_APP ptr_app)
 		app_time = timer_ptr ? *((PLONG64)timer_ptr) : 0;
 	}
 
-	if (!is_menu)
-	{
-		SendDlgItemMessage (hwnd, ctrl_id, CB_INSERTSTRING, 0, (LPARAM)_r_locale_getstring (IDS_DISABLETIMER));
-		SendDlgItemMessage (hwnd, ctrl_id, CB_SETITEMDATA, 0, (LPARAM)-1);
-	}
-
 	for (SIZE_T i = 0; i < _r_obj_getarraysize (timers); i++)
 	{
 		timer_ptr = _r_obj_getarrayitem (timers, i);
@@ -2253,55 +2387,85 @@ VOID _app_generate_timerscontrol (PVOID hwnd, INT ctrl_id, PITEM_APP ptr_app)
 		if (!timer_ptr)
 			continue;
 
-		LONG64 timestamp = *((PLONG64)timer_ptr);
+		timestamp = *((PLONG64)timer_ptr);
 
 		_r_format_interval (interval_string, RTL_NUMBER_OF (interval_string), timestamp + 1, 1);
 
-		if (is_menu)
+		index = IDX_TIMER + (UINT)i;
+
+		AppendMenu (hsubmenu, MF_STRING, index, interval_string);
+
+		if (!is_checked && (app_time > current_time) && (app_time <= (current_time + timestamp)))
 		{
-			index = IDX_TIMER + (UINT)i;
-
-			AppendMenu (hwnd, MF_STRING, index, interval_string);
-
-			if (!is_checked && (app_time > current_time) && (app_time <= (current_time + timestamp)))
-			{
-				_r_menu_checkitem (hwnd, IDX_TIMER, index, MF_BYCOMMAND, index);
-				is_checked = TRUE;
-			}
+			_r_menu_checkitem (hsubmenu, IDX_TIMER, index, MF_BYCOMMAND, index);
+			is_checked = TRUE;
 		}
-		else
-		{
-			index = (UINT)i + 1;
 
-			SendDlgItemMessage (hwnd, ctrl_id, CB_INSERTSTRING, (WPARAM)index, (LPARAM)interval_string);
-			SendDlgItemMessage (hwnd, ctrl_id, CB_SETITEMDATA, (WPARAM)index, (LPARAM)i);
-
-			if (!is_checked && (app_time > current_time) && (app_time <= (current_time + timestamp)))
-			{
-				SendDlgItemMessage (hwnd, IDC_RULE_PROTOCOL_ID, CB_SETCURSEL, (WPARAM)index, 0);
-				is_checked = TRUE;
-			}
-		}
 	}
 
 	if (!is_checked)
 	{
-		if (is_menu)
-		{
-			_r_menu_checkitem (hwnd, IDM_DISABLETIMER, IDM_DISABLETIMER, MF_BYCOMMAND, IDM_DISABLETIMER);
-		}
-		else
-		{
-			SendDlgItemMessage (hwnd, ctrl_id, CB_SETCURSEL, 0, 0);
-		}
+		_r_menu_checkitem (hsubmenu, IDM_DISABLETIMER, IDM_DISABLETIMER, MF_BYCOMMAND, IDM_DISABLETIMER);
 	}
 }
 
-PR_STRING _app_parsehoststring (LPCWSTR hostname, USHORT port)
+BOOLEAN _app_setruletoapp (_In_ HWND hwnd, _Inout_ PITEM_RULE ptr_rule, _In_ INT item_id, _In_ PITEM_APP ptr_app, _In_ BOOLEAN is_enable)
 {
-	if (_r_str_isempty (hostname))
-		return NULL;
+	INT listview_id;
 
+	if (ptr_rule->is_forservices && (ptr_app->app_hash == config.ntoskrnl_hash || ptr_app->app_hash == config.svchost_hash))
+		return FALSE;
+
+	if (is_enable == (_r_obj_findhashtable (ptr_rule->apps, ptr_app->app_hash) != NULL))
+		return FALSE;
+
+	if (is_enable)
+	{
+		_app_addcachetablevalue (ptr_rule->apps, ptr_app->app_hash, NULL, 0);
+
+		_app_ruleenable (ptr_rule, TRUE, TRUE);
+	}
+	else
+	{
+		_r_obj_removehashtableentry (ptr_rule->apps, ptr_app->app_hash);
+
+		if (_r_obj_ishashtableempty (ptr_rule->apps))
+			_app_ruleenable (ptr_rule, FALSE, TRUE);
+	}
+
+	listview_id = _app_getlistview_id (ptr_rule->type);
+
+	if (listview_id)
+	{
+		if (item_id != -1)
+		{
+			_r_spinlock_acquireshared (&lock_checkbox);
+			_app_setruleiteminfo (hwnd, listview_id, item_id, ptr_rule, FALSE);
+			_r_spinlock_releaseshared (&lock_checkbox);
+		}
+	}
+
+	listview_id = PtrToInt (_app_getappinfo (ptr_app, InfoListviewId));
+
+	if (listview_id)
+	{
+		item_id = _app_getposition (hwnd, listview_id, ptr_app->app_hash);
+
+		if (item_id != -1)
+		{
+			_r_spinlock_acquireshared (&lock_checkbox);
+			_app_setappiteminfo (hwnd, listview_id, item_id, ptr_app);
+			_r_spinlock_releaseshared (&lock_checkbox);
+		}
+	}
+
+
+	return TRUE;
+}
+
+_Ret_maybenull_
+PR_STRING _app_parsehoststring (_In_ LPCWSTR hostname, _In_opt_ USHORT port)
+{
 	R_STRINGBUILDER buffer;
 	PR_STRING string;
 	PDNS_RECORD dns_records = NULL;
@@ -2314,7 +2478,7 @@ PR_STRING _app_parsehoststring (LPCWSTR hostname, USHORT port)
 	if (code != DNS_ERROR_RCODE_NO_ERROR)
 	{
 		if (code != DNS_INFO_NO_RECORDS)
-			_r_log (Information, 0, L"DnsQuery (DNS_TYPE_A)", code, hostname);
+			_r_log (LOG_LEVEL_INFO, 0, L"DnsQuery (DNS_TYPE_A)", code, hostname);
 	}
 	else
 	{
@@ -2350,7 +2514,7 @@ PR_STRING _app_parsehoststring (LPCWSTR hostname, USHORT port)
 	if (code != DNS_ERROR_RCODE_NO_ERROR)
 	{
 		if (code != DNS_INFO_NO_RECORDS)
-			_r_log (Information, 0, L"DnsQuery (DNS_TYPE_AAAA)", code, hostname);
+			_r_log (LOG_LEVEL_INFO, 0, L"DnsQuery (DNS_TYPE_AAAA)", code, hostname);
 	}
 	else
 	{
@@ -2391,7 +2555,8 @@ PR_STRING _app_parsehoststring (LPCWSTR hostname, USHORT port)
 	return NULL;
 }
 
-BOOLEAN _app_parsenetworkstring (LPCWSTR network_string, PITEM_ADDRESS address)
+_Success_ (return)
+BOOLEAN _app_parsenetworkstring (_In_ LPCWSTR network_string, _Inout_ PITEM_ADDRESS address)
 {
 	NET_ADDRESS_INFO ni;
 	NET_ADDRESS_INFO ni_end;
@@ -2466,8 +2631,11 @@ BOOLEAN _app_parsenetworkstring (LPCWSTR network_string, PITEM_ADDRESS address)
 	}
 	else if (ni.Format == NET_ADDRESS_DNS_NAME)
 	{
-		SIZE_T dns_hash = _r_str_hash (ni.NamedAddress.Address);
-		PR_HASHSTORE hashstore = _r_obj_findhashtable (cache_dns, dns_hash);
+		ULONG_PTR dns_hash;
+		PR_HASHSTORE hashstore;
+
+		dns_hash = _r_str_hash (ni.NamedAddress.Address);
+		hashstore = _app_getcachetable (cache_dns, dns_hash, &lock_cache_dns);
 
 		if (hashstore)
 		{
@@ -2485,7 +2653,7 @@ BOOLEAN _app_parsenetworkstring (LPCWSTR network_string, PITEM_ADDRESS address)
 		{
 			_r_str_copy (address->host, RTL_NUMBER_OF (address->host), host_string->buffer);
 
-			_app_addcachetable (cache_dns, dns_hash, host_string, 0);
+			_app_addcachetable (cache_dns, dns_hash, &lock_cache_dns, host_string, 0);
 
 			return TRUE;
 		}
@@ -2495,12 +2663,12 @@ BOOLEAN _app_parsenetworkstring (LPCWSTR network_string, PITEM_ADDRESS address)
 
 CleanupExit:
 
-	_r_log (Information, 0, L"ParseNetworkString", code, network_string);
+	_r_log (LOG_LEVEL_INFO, 0, L"ParseNetworkString", code, network_string);
 
 	return FALSE;
 }
 
-BOOLEAN _app_preparserulestring (PR_STRING rule, PITEM_ADDRESS address)
+BOOLEAN _app_preparserulestring (_In_ PR_STRING rule, _In_ PITEM_ADDRESS address)
 {
 	const WCHAR valid_chars[] = {
 		L'.',
@@ -2543,7 +2711,7 @@ BOOLEAN _app_preparserulestring (PR_STRING rule, PITEM_ADDRESS address)
 	}
 
 	// parse rule range
-	SIZE_T range_pos = _r_str_findchar (rule->buffer, length, DIVIDER_RULE_RANGE);
+	SIZE_T range_pos = _r_str_findchar (rule->buffer, _r_obj_getstringlength (rule), DIVIDER_RULE_RANGE);
 
 	// extract start and end position of rule
 	if ((address->is_range = (range_pos != SIZE_MAX)))
@@ -2623,7 +2791,7 @@ BOOLEAN _app_preparserulestring (PR_STRING rule, PITEM_ADDRESS address)
 	return FALSE;
 }
 
-BOOLEAN _app_parserulestring (PR_STRING rule, PITEM_ADDRESS address)
+BOOLEAN _app_parserulestring (_In_opt_ PR_STRING rule, _Inout_opt_ PITEM_ADDRESS address)
 {
 	if (_r_obj_isstringempty (rule))
 		return TRUE;
@@ -2640,8 +2808,11 @@ BOOLEAN _app_parserulestring (PR_STRING rule, PITEM_ADDRESS address)
 	}
 
 	// auto-parse rule type
-	SIZE_T rule_hash = _r_obj_getstringhash (rule);
-	PR_HASHSTORE hashstore = _r_obj_findhashtable (cache_types, rule_hash);
+	ULONG_PTR rule_hash;
+	PR_HASHSTORE hashstore;
+
+	rule_hash = _r_obj_getstringhash (rule);
+	hashstore = _app_getcachetable (cache_types, rule_hash, &lock_cache_types);
 
 	if (hashstore)
 		address->type = hashstore->value_number;
@@ -2652,7 +2823,7 @@ BOOLEAN _app_parserulestring (PR_STRING rule, PITEM_ADDRESS address)
 	if (is_checkonly)
 		return TRUE;
 
-	_app_addcachetable (cache_types, rule_hash, NULL, address->type);
+	_app_addcachetable (cache_types, rule_hash, &lock_cache_types, NULL, address->type);
 
 	if (address->type == DataTypePort)
 	{
@@ -2686,7 +2857,7 @@ BOOLEAN _app_parserulestring (PR_STRING rule, PITEM_ADDRESS address)
 	return TRUE;
 }
 
-INT _app_getlistview_id (ENUM_TYPE_DATA type)
+INT _app_getlistview_id (_In_ ENUM_TYPE_DATA type)
 {
 	if (type == DataAppRegular || type == DataAppDevice || type == DataAppNetwork || type == DataAppPico)
 		return IDC_APPS_PROFILE;
@@ -2709,11 +2880,9 @@ INT _app_getlistview_id (ENUM_TYPE_DATA type)
 	return 0;
 }
 
-HBITMAP _app_bitmapfromico (HICON hicon, INT icon_size)
+_Ret_maybenull_
+HBITMAP _app_bitmapfromico (_In_ HICON hicon, _In_ INT icon_size)
 {
-	if (!hicon)
-		return NULL;
-
 	RECT icon_rect;
 	SetRect (&icon_rect, 0, 0, icon_size, icon_size);
 
@@ -2779,7 +2948,8 @@ HBITMAP _app_bitmapfromico (HICON hicon, INT icon_size)
 	return hbitmap;
 }
 
-HBITMAP _app_bitmapfrompng (HINSTANCE hinst, LPCWSTR name, INT icon_size)
+_Ret_maybenull_
+HBITMAP _app_bitmapfrompng (_In_opt_ HINSTANCE hinst, _In_ LPCWSTR name, _In_ INT icon_size)
 {
 	BOOLEAN is_success = FALSE;
 
